@@ -13,6 +13,8 @@ each ensemble member in a single Euler step.
     modulus_patch/   Changes to NVIDIA Modulus v0.9.0 (see modulus_patch/README.md)
     preprocessing/   ERA5 download, log1p + regrid, zarr store, normalization stats
     training/        Regression, diffusion, and flow-matching training
+    evaluation/      Scripts that run inference and cache results
+    notebooks/       Renders every paper table and figure from those caches
 
 ## Data
 
@@ -40,6 +42,27 @@ Both products come from the Copernicus Climate Data Store.
        python training/train.py      --config-name=vietnam_config_training_diffusion
        python training/train_flow.py --config-name=vietnam_config_training_corrflow
 
+4. Evaluate. The scripts compute and cache; the notebook renders. Run
+   `run_cache_extreme.py` first, since the ablation needs its
+   `extreme_meta.json`. All four write to `OUT_DIR`.
+
+       python evaluation/run_cache_extreme.py
+       python evaluation/run_fullperiod_sampled.py
+       python evaluation/run_ablation_matched.py
+       python evaluation/run_psd.py
+
+   Then run `notebooks/vietnam_results.ipynb` top to bottom.
+
+| Script | Produces |
+|---|---|
+| `run_cache_extreme.py` | Heavy-rain subset selection, per-timestep caches, case timestamps |
+| `run_fullperiod_sampled.py` | Broad month-stratified sample scores |
+| `run_ablation_matched.py` | Solver sweep and latency (`tab6_ablation.csv`) |
+| `run_psd.py` | Radial power spectra (`psd_results.npz`) |
+
+The notebook reads these and produces the score tables, reliability diagrams,
+rank histogram, spread-skill plot, per-hour boxplots, and case-study figures.
+
 ## Paths
 
 These scripts carry absolute paths from the machine the experiments ran on.
@@ -51,6 +74,13 @@ Edit before running:
 | `preprocessing/viz_utils.py` | 106-108 | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_OUTPUT` |
 | `training/train.py` | 186 | `run_dir` |
 | `training/train_flow.py` | 298 | `run_dir` |
+| `evaluation/run_cache_extreme.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
+| `evaluation/run_fullperiod_sampled.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
+| `evaluation/run_ablation_matched.py` | 28, 62-63 | `PROJECT_ROOT`, `OUT_DIR`, `META_DIR` |
+| `evaluation/run_psd.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
+
+`PROJECT_ROOT` must point at the Modulus clone carrying `modulus_patch/`.
+`run_ablation_matched.py` also accepts `--out-dir`.
 
 ## License
 
