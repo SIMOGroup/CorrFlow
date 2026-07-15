@@ -1,0 +1,41 @@
+# defaults:
+#   - corrdiff_diffusion_mini
+
+# Hyperparameters
+hp:
+    training_duration: 200000000
+    # Training duration based on the number of processed samples
+    total_batch_size: 256
+    # Total batch size
+    batch_size_per_gpu: 64
+    # Batch size per GPU (MATCH regression)
+    lr: 0.0002
+    # Learning rate (MATCH regression)
+    grad_clip_threshold: null
+    # no gradient clipping (MATCH regression)
+    lr_decay: 1
+    # LR decay rate (MATCH regression)
+    lr_rampup: 10000000
+    # Rampup for learning rate (MATCH regression)
+
+# Performance
+perf:
+    fp_optimizations: amp-bf16
+    # Floating point mode
+    dataloader_workers: 12
+    # DataLoader worker processes (MATCH regression)
+    songunet_checkpoint_level: 0
+    # Gradient checkpointing level (MATCH regression)
+
+# I/O
+io:
+    regression_checkpoint_path: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
+    # Where to load the regression checkpoint
+    print_progress_freq: 1000
+    # MATCH regression
+    save_checkpoint_freq: 5000
+    # MATCH regression
+    validation_freq: 5000
+    # MATCH regression
+    validation_steps: 100
+    # MATCH regression

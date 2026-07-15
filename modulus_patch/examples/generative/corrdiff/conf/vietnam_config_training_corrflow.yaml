@@ -1,0 +1,32 @@
+# conf/vietnam_config_training_corrflow.yaml
+run:
+  name: vietnam_flow
+
+hydra:
+  job:
+    chdir: true
+    name: ${run.name}
+  run:
+    dir: ./outputs/${run.name}
+
+defaults:
+  - dataset/vietnam
+  - model/vietnam_corrflow_model
+  - training/vietnam_corrflow_training
+
+# ── Validation dataset (2024) ─────────────────────────────────────────────────
+validation:
+  type:       vietnam
+  data_path:  /mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr
+  stats_path: /mnt/data/khaiht/data/vietnam_train_tp_only/stats.json
+  time_range: [2024, 2024]
+  input_variables: ['tp_coarse']
+  output_variables:   ['tp']
+  invariant_variables: []
+
+# ── Early stopping ────────────────────────────────────────────────────────────
+training:
+  io:
+    early_stopping:
+      patience:  2000
+      min_delta: 0.0001

@@ -1,0 +1,18 @@
+run:
+  name: vietnam_generation_corrflow
+
+hydra:
+  job:
+    chdir: true
+    name: ${run.name}
+  run:
+    dir: ./outputs/${run.name}
+
+# Get defaults
+defaults:
+
+  # Dataset
+  - dataset/vietnam
+
+  # Generation
+  - generation/vietnamflow

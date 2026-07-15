@@ -1,0 +1,37 @@
+# conf/generation/vietnamflow.yaml
+# Generation settings for the CorrFlow model (flow-matching second stage).
+
+num_ensembles: 32
+  # Number of ensemble members to generate per input timestep.
+
+seed_batch_size: 32
+  # UNUSED by CorrFlow (kept for config-schema compatibility with CorrDiff).
+  # CorrFlow generates all num_ensembles members in a single batched forward pass.
+
+solver: euler
+  # ODE solver [euler, heun]
+
+flow_steps: 10
+  # Number of Euler integration steps for the flow ODE.
+  # Higher = better quality, higher cost.  25–50 is a practical range.
+
+gridtype: sinusoidal
+N_grid_channels: 4
+  # Positional-embedding channels injected by SongUNetPosEmbd.
+  # Must match N_GRID_CH = 4 hardcoded in the FlowUNet class.
+
+sample_res: full
+  # Sampling resolution. "full" = no patching (full 192×160 grid).
+
+times_range: null
+times:
+
+io:
+  reg_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
+  # Frozen stage-1 regression checkpoint (same as CorrDiff training).
+
+  flow_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_flow_hope/checkpoints_flow_best/FlowUNet.0.6365184.pt
+  # CorrFlow stage-2 checkpoint saved by save_checkpoint() during training.
+  # Format: plain torch.save(model, path) — NOT a Modulus .mdlus checkpoint.
+  # Loaded in the notebook via: net_flow = torch.load(flow_ckpt_filename, map_location=device)
+  # Update this path once training completes.

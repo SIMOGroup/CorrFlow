@@ -1,0 +1,34 @@
+# conf/model/vietnam_corrflow_model.yaml
+# CorrFlow stage-2 model config.
+# NOTE: CorrFlow does NOT use the EDM preconditioner ("diffusion" name).
+# It is a plain UNet velocity network. No noise-level conditioning is used,
+# so we override `name` to "corrflow" (or any non-preconditioner name) and
+# disable hr_mean_conditioning and scale_cond_input.
+#
+# This file intentionally does NOT inherit from corrdiff_diffusion because
+# that base sets `name: diffusion` (EDM preconditioner), which is wrong
+# for flow matching. CorrFlow uses embedding_type="zero" and no sigma-label
+# embedding — the architecture is chosen directly in FlowUNet.__init__.
+
+name: corrflow
+  # Distinguishes this from the EDM diffusion model. Not consumed by
+  # any preconditioner — FlowUNet is instantiated manually in the notebook.
+
+hr_mean_conditioning: true
+  # The regression mean IS passed as part of the conditioning (img_in_channels
+  # includes img_out_channels when hr_mean_conditioning=True). This must match
+  # the channel arithmetic in the training notebook:
+  #   img_in_channels = dataset_channels + img_out_channels  (when True)
+
+scale_cond_input: false
+  # Do not scale the conditioning input (recommended for new runs).
+
+model_args:
+  model_channels: 64
+  channel_mult: [1, 2, 2]
+  attn_resolutions: [16]
+  # These are passed through to SongUNetPosEmbd inside FlowUNet.
+  # NOTE: the notebook currently does NOT read model_args from cfg — FlowUNet
+  # is constructed with hardcoded SongUNetPosEmbd defaults. If you want to
+  # control these from config, wire cfg.model.model_args into the FlowUNet
+  # constructor.

@@ -1,0 +1,24 @@
+# Data
+*.zarr/
+*.nc
+*.npz
+*.csv
+
+# Checkpoints
+*.pth
+*.ckpt
+*.mdlus
+*.pt
+
+# Outputs
+outputs/
+*.log
+*.err
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

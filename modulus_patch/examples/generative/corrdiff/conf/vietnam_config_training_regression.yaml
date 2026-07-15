@@ -1,0 +1,37 @@
+run:
+  name: vietnam_regression
+
+hydra:
+  job:
+    chdir: true
+    name: ${run.name}
+  run:
+    dir: ./outputs/${run.name}
+
+defaults:
+  - dataset/vietnam
+  - model/vietnam_corrdiff_regression
+  - training/vietnam_corrdiff_regression
+
+# ── Validation dataset (2024) ─────────────────────────────────────────────────
+# Overrides dataset fields for the val split.  The zarr and stats paths are
+# inherited from dataset/vietnam; only time_range changes.
+validation:
+  type:       vietnam
+  data_path:  /mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr
+  stats_path: /mnt/data/khaiht/data/vietnam_train_tp_only/stats.json
+  time_range: [2024, 2024]
+  input_variables: ['tp_coarse']
+  output_variables:   ['tp']
+  invariant_variables: []
+
+# ── Early stopping (appended to training.io) ─────────────────────────────────
+# validation_freq and validation_steps must already be defined in
+# training/vietnam_corrdiff_regression.yaml under training.io.
+# patience: number of validation checks (not epochs) without improvement.
+# min_delta: minimum absolute decrease in val_loss that counts as improvement.
+training:
+  io:
+    early_stopping:
+      patience:  2000
+      min_delta: 0.0001
