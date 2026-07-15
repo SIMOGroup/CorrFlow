@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-run_fullperiod.py — Table 1: full-period MAE/CRPS over all timesteps.
-Writes: OUT_DIR/tab1_full_period.csv
+run_fullperiod_sampled.py — broad month-stratified sample: runs inference and
+caches the ensembles. Metrics are computed from these caches in
+notebooks/vietnam_results.ipynb, not here.
+Writes: OUT_DIR/cache/{split}/*.npz, OUT_DIR/fullperiod_sample_idxs.json
 """
 import os, sys, time, warnings, json
 from pathlib import Path

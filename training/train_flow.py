@@ -295,7 +295,7 @@ def main():
     ###########################################################################
 
     job_name      = cfg.run.name
-    run_dir       = f"/mnt/data/khaiht/outputs/{job_name}_legend"
+    run_dir       = f"/mnt/data/khaiht/outputs/{job_name}_hope"
     tb_dir        = os.path.join(run_dir, "tensorboard")
     ckpt_dir      = os.path.join(run_dir, "checkpoints_flow")
     best_ckpt_dir = os.path.join(run_dir, "checkpoints_flow_best")
