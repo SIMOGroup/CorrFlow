@@ -1,7 +1,15 @@
 # Modulus patch for CorrFlow
 
-These files modify or extend **NVIDIA Modulus v0.9.0**
-(https://github.com/NVIDIA/modulus), from a snapshot taken 2026-03-23.
+These files modify or extend **NVIDIA Modulus v0.9.0**, from a snapshot taken
+2026-03-23:
+
+    git clone https://github.com/NVIDIA/physicsnemo.git
+    cd physicsnemo && git checkout v0.9.0
+
+Modulus was renamed to PhysicsNeMo after this release; `NVIDIA/modulus`
+redirects to `NVIDIA/physicsnemo`, and the v0.9.0 tag remains available there.
+These patches target the pre-rename `modulus/` package tree and do not apply to
+PhysicsNeMo v2.x, where the package is `physicsnemo/`.
 
 Redistributed under the Apache License 2.0; see `../LICENSE`. NVIDIA's original
 copyright headers are retained in every derived file.
