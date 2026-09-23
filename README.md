@@ -72,15 +72,18 @@ Edit before running:
 |---|---|---|
 | `preprocessing/download_era5.py` | 24 | `out_root` |
 | `preprocessing/viz_utils.py` | 106-108 | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_OUTPUT` |
-| `training/train.py` | 186 | `run_dir` |
-| `training/train_flow.py` | 298 | `run_dir` |
-| `evaluation/run_cache_extreme.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
-| `evaluation/run_fullperiod_sampled.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
-| `evaluation/run_ablation_matched.py` | 28, 62-63 | `PROJECT_ROOT`, `OUT_DIR`, `META_DIR` |
-| `evaluation/run_psd.py` | 15, 35 | `PROJECT_ROOT`, `OUT_DIR` |
+| `training/train.py` | 17, 196 | `MODULUS_ROOT`, `run_dir` |
+| `training/train_flow.py` | 17, 308 | `MODULUS_ROOT`, `run_dir` |
+| `evaluation/run_cache_extreme.py` | 16, 35 | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/run_fullperiod_sampled.py` | 18, 37 | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/run_ablation_matched.py` | 29, 62-63 | `MODULUS_ROOT`, `OUT_DIR`, `META_DIR` |
+| `evaluation/run_psd.py` | 16, 35 | `MODULUS_ROOT`, `OUT_DIR` |
+| `<modulus-root>/examples/generative/corrdiff/conf/dataset/vietnam.yaml` | 2-3 | `data_path`, `stats_path` |
 
-`PROJECT_ROOT` must point at the Modulus clone carrying `modulus_patch/`.
-`run_ablation_matched.py` also accepts `--out-dir`.
+`MODULUS_ROOT` must point at the Modulus v0.9.0 clone with `modulus_patch/`
+applied; the scripts find the CorrDiff datasets and Hydra configs there, so
+they can be run from any directory. `run_ablation_matched.py` also accepts
+`--out-dir`.
 
 ## License
 

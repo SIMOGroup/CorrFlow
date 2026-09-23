@@ -25,13 +25,13 @@ import xarray as xr
 import pandas as pd
 import torch
 
-PROJECT_ROOT  = "/home/khaiht/oggy_climate"
-CORRDIFF_ROOT = "/home/khaiht/oggy_climate/physicsnemo/examples/generative/corrdiff"
-for _p in [PROJECT_ROOT, CORRDIFF_ROOT]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# Modulus v0.9.0 checkout with modulus_patch/ applied
+MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
+if CORRDIFF_ROOT not in sys.path:
+    sys.path.insert(0, CORRDIFF_ROOT)
 
-from hydra import initialize, compose
+from hydra import initialize_config_dir, compose
 from omegaconf import OmegaConf, open_dict
 from modulus.distributed import DistributedManager
 from modulus import Module
@@ -107,8 +107,8 @@ Q90_MM  = float(np.nanquantile(_flat, 0.90))
 Q99_MM  = float(np.nanquantile(_flat, 0.99))
 del _tp_tr, _flat
 
-with initialize(version_base="1.2",
-                config_path="physicsnemo/examples/generative/corrdiff/conf"):
+with initialize_config_dir(version_base="1.2",
+                           config_dir=os.path.join(CORRDIFF_ROOT, "conf")):
     cfg = compose(config_name="vietnam_config_generate")
 OmegaConf.resolve(cfg)
 with open_dict(cfg):

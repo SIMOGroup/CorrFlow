@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import time
 import psutil
 import logging
@@ -11,6 +12,12 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.tensorboard import SummaryWriter
+
+# Modulus v0.9.0 checkout with modulus_patch/ applied
+MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
+if CORRDIFF_ROOT not in sys.path:
+    sys.path.insert(0, CORRDIFF_ROOT)
 
 from modulus import Module
 from modulus.models.diffusion import SongUNetPosEmbd
@@ -252,6 +259,9 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
 ###############################################################################
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config-name", default="vietnam_config_training_corrflow")
+    args = parser.parse_args()
 
     ###########################################################################
     # Distributed ENV
@@ -280,13 +290,13 @@ def main():
     # Load Hydra config
     ###########################################################################
 
-    from hydra import initialize, compose
+    from hydra import initialize_config_dir, compose
 
-    with initialize(
+    with initialize_config_dir(
         version_base="1.2",
-        config_path="physicsnemo/examples/generative/corrdiff/conf",
+        config_dir=os.path.join(CORRDIFF_ROOT, "conf"),
     ):
-        cfg = compose(config_name="vietnam_config_training_corrflow")
+        cfg = compose(config_name=args.config_name)
 
     print(OmegaConf.to_yaml(cfg))
 
