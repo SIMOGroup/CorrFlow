@@ -1,0 +1,23 @@
+run:
+  name: vietnam_generation
+
+hydra:
+  job:
+    chdir: true
+    name: ${run.name}
+  run:
+    dir: ./outputs/${run.name}
+
+# Get defaults
+defaults:
+
+  # Dataset
+  - dataset/vietnam
+
+  # Sampler
+  # - sampler/stochastic
+  - sampler/deterministic
+
+  # Generation
+  - generation/vietnam
+    #- generation/patched_based
