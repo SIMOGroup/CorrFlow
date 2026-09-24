@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""
-run_fullperiod_sampled.py — broad month-stratified sample: runs inference and
-caches the ensembles. Metrics are computed from these caches in
-notebooks/vietnam_results.ipynb, not here.
-Writes: OUT_DIR/cache/{split}/*.npz, OUT_DIR/fullperiod_sample_idxs.json
+"""Run inference on a month-stratified sample of each split and cache the ensembles.
+
+Metrics are computed from these caches in notebooks/vietnam_results.ipynb.
+Writes OUT_DIR/cache/{split}/*.npz and OUT_DIR/fullperiod_sample_idxs.json.
 """
 import os, sys, time, warnings, json
 from pathlib import Path
@@ -249,16 +248,14 @@ def _run_and_cache(split, zi):
         _cache_path(split, zi),
         truth_mm=truth_mm, unet_mm=unet_mm, cd_mm=cd_mm, cf_mm=cf_mm)
 
-# =============================================================================
-# SANITY CHECKS — run before the main loop to verify everything is wired correctly
-# =============================================================================
+# Sanity checks before the main loop
 import time as _time
 
 print("\n" + "=" * 65)
 print("  SANITY CHECKS")
 print("=" * 65)
 
-# ── 1. Config summary ─────────────────────────────────────────────────────────
+# 1. Config summary
 print(f"\n[1] Config")
 print(f"    K_ENS          = {K_ENS}")
 print(f"    IMG_SHAPE      = {IMG_SHAPE}")
@@ -268,7 +265,7 @@ print(f"    M_OUT={M_OUT:.4f}  S_OUT={S_OUT:.4f}")
 print(f"    Q90={Q90_MM:.4f}  Q99={Q99_MM:.4f} mm/hr")
 print(f"    OUT_DIR = {OUT_DIR}")
 
-# ── 2. Checkpoint paths exist ────────────────────────────────────────────────
+# 2. Checkpoint paths exist
 print(f"\n[2] Checkpoint files")
 for label, path in [
     ("UNet  ", REG_CKPT),
@@ -280,7 +277,7 @@ for label, path in [
     if not ok:
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-# ── 3. Zarr sanity ────────────────────────────────────────────────────────────
+# 3. Zarr store
 print(f"\n[3] Zarr store")
 print(f"    Variables  : {list(ds_zarr.data_vars)}")
 print(f"    Total time : {ds_zarr.sizes['time']:,} timesteps")
@@ -292,7 +289,7 @@ for split_name, years in [("train", TRAIN_YEARS), ("val", VAL_YEARS), ("test", T
     n = int(np.isin(_yr_check, years).sum())
     print(f"    {split_name:<6}: {n:,} timesteps  ({years[0]}–{years[-1]})")
 
-# ── 4. One-timestep forward pass (index 0 of test split) ─────────────────────
+# 4. Forward pass on one test timestep
 print(f"\n[4] One-timestep forward pass")
 _yrs_check = ds_zarr["time"].dt.year.values
 _zi_sanity = int(np.where(np.isin(_yrs_check, TEST_YEARS))[0][0])
@@ -355,7 +352,7 @@ print(f"      Mean ens std         : {_cf_std_s:.4f} mm/hr  (>0 = ensemble is di
 assert _cf_mm_s.shape == (K_ENS, H, W), f"CorrFlow shape mismatch: {_cf_mm_s.shape}"
 assert not np.isnan(_cf_std_s), "CorrFlow ensemble is all-NaN — checkpoint or denorm may be wrong"
 
-# ── 5. Output / truth values sanity ─────────────────────────────────────────
+# 5. Output and truth ranges
 print(f"\n[5] Truth for test timestep {_ts_sanity}")
 print(f"    Truth range  : [{np.nanmin(_truth_s):.3f}, {np.nanmax(_truth_s):.3f}] mm/hr")
 print(f"    Land pixels  : {int(np.sum(~np.isnan(_truth_s))):,}")
@@ -363,7 +360,7 @@ assert np.nanmax(_truth_s) > 0,   "Truth is all zeros — denorm may be wrong"
 assert np.nanmax(_truth_s) < 500, "Truth max > 500 mm/hr — denorm likely wrong"
 assert np.nanmin(_unet_mm_s) >= -1, "Negative predictions — denorm likely wrong"
 
-# ── 6. Timing estimate ────────────────────────────────────────────────────────
+# 6. Timing estimate
 print(f"\n[6] Timing estimate")
 _per_ts = _unet_t + _cd_t + _cf_t
 print(f"    Time per timestep : {_per_ts:.2f} s  "
@@ -381,15 +378,13 @@ print("\n" + "=" * 65)
 print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
 print("=" * 65 + "\n")
 
-# =============================================================================
-# MAIN LOOP — cache a STRATIFIED SAMPLE of each split (Table 1 computed in notebook)
+# Main loop: cache a month-stratified sample of each split. Table 1 is
+# computed from these caches in the notebook.
 #
-# Rationale: aggregate MAE/CRPS are means over timesteps; a month-stratified
-# random sample of ~1-2k timesteps/split is statistically indistinguishable
-# from the full ~8.7k-hr year but ~5x cheaper. Ensembles are cached to the SAME
-# cache/{split}/ dir as the extreme set, so overlapping timesteps are reused and
-# any metric can be (re)computed in the notebook with zero re-inference.
-# =============================================================================
+# Aggregate MAE/CRPS are means over timesteps, so ~1-2k sampled timesteps
+# per split match the full ~8.7k-hour year at about a fifth of the cost.
+# The caches share cache/{split}/ with the extreme set, so overlapping
+# timesteps are reused and metrics can be recomputed without inference.
 
 SAMPLE_PER_SPLIT = {"train": 1500, "val": 1000, "test": 2000}  # test = headline
 SEED             = 1234
@@ -425,7 +420,7 @@ for split_name, split_years in [("train", TRAIN_YEARS),
     sample_idxs[split_name] = sel
     print(f"  {split_name:<6}: {len(sel):,} / {len(idxs_s):,} timesteps")
 
-# ── Cache ensembles for sampled timesteps (skip already-cached, e.g. extremes) ─
+# Cache ensembles for sampled timesteps (skip already-cached, e.g. extremes)
 for split_name in ("test", "val", "train"):
     sel = sample_idxs[split_name]
     n   = len(sel)
@@ -445,7 +440,7 @@ for split_name in ("test", "val", "train"):
             print(f"  {ii+1:5d}/{n}  {rate:.1f} s/ts  eta {eta:.0f} min", flush=True)
     print(f"  done in {(time.time()-t0)/60:.1f} min.")
 
-# ── Save sample index list for the notebook ───────────────────────────────────
+# Save sample index list for the notebook
 meta = {
     "seed":             SEED,
     "sample_per_split": SAMPLE_PER_SPLIT,

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""
-run_psd.py — Figure power_spectra: azimuthal PSD over all 2025 test timesteps.
-Writes: OUT_DIR/psd_results.npz
+"""Azimuthally averaged power spectra for the power_spectra figure.
+
+Uses a month-stratified sample of PSD_SAMPLE_N test timesteps from 2025.
+Writes OUT_DIR/psd_results.npz.
 """
 import os, sys, time, warnings, json
 from pathlib import Path
@@ -247,16 +248,14 @@ def _run_and_cache(split, zi):
         _cache_path(split, zi),
         truth_mm=truth_mm, unet_mm=unet_mm, cd_mm=cd_mm, cf_mm=cf_mm)
 
-# =============================================================================
-# SANITY CHECKS — run before the main loop to verify everything is wired correctly
-# =============================================================================
+# Sanity checks before the main loop
 import time as _time
 
 print("\n" + "=" * 65)
 print("  SANITY CHECKS")
 print("=" * 65)
 
-# ── 1. Config summary ─────────────────────────────────────────────────────────
+# 1. Config summary
 print(f"\n[1] Config")
 print(f"    K_ENS          = {K_ENS}")
 print(f"    IMG_SHAPE      = {IMG_SHAPE}")
@@ -266,7 +265,7 @@ print(f"    M_OUT={M_OUT:.4f}  S_OUT={S_OUT:.4f}")
 print(f"    Q90={Q90_MM:.4f}  Q99={Q99_MM:.4f} mm/hr")
 print(f"    OUT_DIR = {OUT_DIR}")
 
-# ── 2. Checkpoint paths exist ────────────────────────────────────────────────
+# 2. Checkpoint paths exist
 print(f"\n[2] Checkpoint files")
 for label, path in [
     ("UNet  ", REG_CKPT),
@@ -278,7 +277,7 @@ for label, path in [
     if not ok:
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-# ── 3. Zarr sanity ────────────────────────────────────────────────────────────
+# 3. Zarr store
 print(f"\n[3] Zarr store")
 print(f"    Variables  : {list(ds_zarr.data_vars)}")
 print(f"    Total time : {ds_zarr.sizes['time']:,} timesteps")
@@ -290,7 +289,7 @@ for split_name, years in [("train", TRAIN_YEARS), ("val", VAL_YEARS), ("test", T
     n = int(np.isin(_yr_check, years).sum())
     print(f"    {split_name:<6}: {n:,} timesteps  ({years[0]}–{years[-1]})")
 
-# ── 4. One-timestep forward pass (index 0 of test split) ─────────────────────
+# 4. Forward pass on one test timestep
 print(f"\n[4] One-timestep forward pass")
 _yrs_check = ds_zarr["time"].dt.year.values
 _zi_sanity = int(np.where(np.isin(_yrs_check, TEST_YEARS))[0][0])
@@ -353,7 +352,7 @@ print(f"      Mean ens std         : {_cf_std_s:.4f} mm/hr  (>0 = ensemble is di
 assert _cf_mm_s.shape == (K_ENS, H, W), f"CorrFlow shape mismatch: {_cf_mm_s.shape}"
 assert not np.isnan(_cf_std_s), "CorrFlow ensemble is all-NaN — checkpoint or denorm may be wrong"
 
-# ── 5. Output / truth values sanity ─────────────────────────────────────────
+# 5. Output and truth ranges
 print(f"\n[5] Truth for test timestep {_ts_sanity}")
 print(f"    Truth range  : [{np.nanmin(_truth_s):.3f}, {np.nanmax(_truth_s):.3f}] mm/hr")
 print(f"    Land pixels  : {int(np.sum(~np.isnan(_truth_s))):,}")
@@ -361,7 +360,7 @@ assert np.nanmax(_truth_s) > 0,   "Truth is all zeros — denorm may be wrong"
 assert np.nanmax(_truth_s) < 500, "Truth max > 500 mm/hr — denorm likely wrong"
 assert np.nanmin(_unet_mm_s) >= -1, "Negative predictions — denorm likely wrong"
 
-# ── 6. Timing estimate ────────────────────────────────────────────────────────
+# 6. Timing estimate
 print(f"\n[6] Timing estimate")
 _per_ts = _unet_t + _cd_t + _cf_t
 print(f"    Time per timestep : {_per_ts:.2f} s  "
@@ -379,11 +378,7 @@ print("\n" + "=" * 65)
 print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
 print("=" * 65 + "\n")
 
-# =============================================================================
-# Figure power_spectra — azimuthal PSD over all 2025 test timesteps
-# Runs all models on every test timestep (no cache needed — just ens mean).
-# Writes: OUT_DIR/psd_results.npz  (freq array + mean PSD per model)
-# =============================================================================
+# Power spectra: mean PSD per model, saved with the frequency axis
 
 def _az_psd(field, dx_km=11.1):
     # Fill ocean (NaN) with the field mean to avoid a sharp land-sea step,
@@ -421,9 +416,9 @@ ENSEMBLE = ["CorrDiff (Heun)", "CorrFlow (Euler)"]
 psd_acc  = {k: [] for k in LABELS}        # per-timestep central spectrum
 freq_ref = None
 
-# Subsample test timesteps for speed, MONTH-STRATIFIED to match run_fullperiod_sampled.py
-# (proportional per-month quota -> every season represented by construction). Spectra
-# averaged over ~1500 timesteps are indistinguishable from all ~8760. None = all.
+# Subsample test timesteps for speed, month-stratified like run_fullperiod_sampled.py
+# so every season is represented. Spectra averaged over a few thousand timesteps
+# match those over all ~8760. None = all.
 PSD_SAMPLE_N = 2000
 
 def _stratified_sample(idxs, months, n_target, rng):
@@ -478,8 +473,8 @@ for ii, zi in enumerate(loop_idxs):
             freq_ref = fr
         psd_acc[tag].append(pr)
 
-    # ensemble fields: PSD of EACH member, then average the spectra
-    # (NOT the PSD of the ensemble mean, which would suppress fine-scale power)
+    # ensemble fields: PSD of each member, then average the spectra
+    # (not the PSD of the ensemble mean, which would suppress fine-scale power)
     for tag, members in [("CorrDiff (Heun)",  cd_members),
                          ("CorrFlow (Euler)", cf_members)]:
         specs = np.stack([_az_psd(members[m])[1]

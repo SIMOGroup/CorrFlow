@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-run_ablation_matched_full.py — Table 6 solver ablation on the FULL extreme
-test set, using the MATCHED-ARCHITECTURE CorrFlow.
+Table 6 solver ablation on the full extreme test set, using the
+matched-architecture CorrFlow.
 
-Latency = GPU inference time ONLY: torch.cuda.synchronize() brackets isolate the
-model forward; host transfer (.cpu()) and MAE/CRPS math are excluded, with a
-short warmup to absorb cuDNN autotune.
+Latency is GPU inference time only: torch.cuda.synchronize() brackets the
+model forward, so host transfer and the MAE/CRPS computation are excluded.
+A short warmup absorbs cuDNN autotuning.
 
-CLI
----
+Options:
   --latency-only     skip MAE/CRPS; measure inference latency only
                      (writes tab6_ablation_latency.csv instead of the full CSV)
   --max-ts N         use at most N extreme test timesteps (default: full set)
@@ -63,7 +62,7 @@ OUT_DIR    = args.out_dir or "/mnt/data/khaiht/outputs/vietnam_results_1step"
 META_DIR   = "/mnt/data/khaiht/outputs/vietnam_results_1step"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# Backbone args: must equal cfg.model.model_args used for BOTH models.
+# Backbone args: must equal cfg.model.model_args used for both models.
 BACKBONE_KWARGS = dict(model_channels=64, channel_mult=[1, 2, 2],
                        attn_resolutions=[16])
 HR_MEAN_CONDITIONING = True     # matches model/vietnam_corrflow_model.yaml
@@ -236,8 +235,8 @@ def run_corrflow(img_lr_t, n_steps=10, solver="euler", seed=0,
     # cond must match training: cat([mu, img_lr]) when hr_mean_conditioning.
     cond1 = torch.cat([mu, img_lr_t], dim=1) if HR_MEAN_CONDITIONING else img_lr_t
     cond  = cond1.expand(K_ENS, -1, -1, -1)
-    # Deterministic base noise (member k <- seed k, reused each timestep) so
-    # CorrFlow is reproducible, matching run_corrdiff's seeds = range(K_ENS).
+    # Fixed base noise (member k uses seed k at every timestep) keeps CorrFlow
+    # reproducible and matches the CorrDiff seeds, range(K_ENS).
     g = torch.Generator(device=device)
     r = torch.empty(K_ENS, C_OUT, *IMG_SHAPE, device=device)
     for k in range(K_ENS):
@@ -324,14 +323,12 @@ def _run_and_cache(split, zi):
         truth_mm=truth_mm, unet_mm=unet_mm, cd_mm=cd_mm, cf_mm=cf_mm)
 
 
-# =============================================================================
-# SANITY CHECKS — run before the main loop to verify everything is wired correctly
-# =============================================================================
+# Sanity checks before the main loop
 print("\n" + "=" * 65)
 print("  SANITY CHECKS")
 print("=" * 65)
 
-# ── 1. Config summary ─────────────────────────────────────────────────────────
+# 1. Config summary
 print(f"\n[1] Config")
 print(f"    K_ENS                 = {K_ENS}")
 print(f"    IMG_SHAPE             = {IMG_SHAPE}")
@@ -344,7 +341,7 @@ print(f"    Q90={Q90_MM:.4f}  Q99={Q99_MM:.4f} mm/hr")
 print(f"    OUT_DIR  = {OUT_DIR}")
 print(f"    META_DIR = {META_DIR}")
 
-# ── 2. Checkpoint paths exist ────────────────────────────────────────────────
+# 2. Checkpoint paths exist
 print(f"\n[2] Checkpoint files")
 for label, path in [
     ("UNet  ", REG_CKPT),
@@ -359,7 +356,7 @@ for label, path in [
             f"Hint: *_best/ only holds val-loss improvements. Periodic saves "
             f"live in the non-best checkpoints/ folder — list it and update the path.")
 
-# ── 3. Zarr sanity ────────────────────────────────────────────────────────────
+# 3. Zarr store
 print(f"\n[3] Zarr store")
 print(f"    Variables  : {list(ds_zarr.data_vars)}")
 print(f"    Total time : {ds_zarr.sizes['time']:,} timesteps")
@@ -371,7 +368,7 @@ for split_name, years in [("train", TRAIN_YEARS), ("val", VAL_YEARS), ("test", T
     n = int(np.isin(_yr_check, years).sum())
     print(f"    {split_name:<6}: {n:,} timesteps  ({years[0]}–{years[-1]})")
 
-# ── 4. One-timestep forward pass (highest-precip test timestep) ──────────────
+# 4. Forward pass on the highest-precipitation test timestep
 print(f"\n[4] One-timestep forward pass")
 _yrs_check = ds_zarr["time"].dt.year.values
 _test_idxs_s = np.where(np.isin(_yrs_check, TEST_YEARS))[0]
@@ -397,9 +394,10 @@ assert not torch.isnan(_img_s).any(), "NaN in model input tensor"
 
 
 def _gpu_time(fn):
-    """Warm (1 iter) + synchronized, GPU-forward-only timing of a single call.
-    Matches the ablation-loop methodology so these sanity latencies are directly
-    comparable to Table 6 (host transfer + numpy denorm are excluded)."""
+    """Time one call on the GPU after a single warmup iteration.
+
+    Same method as the ablation loop, so the result is comparable to Table 6.
+    Host transfer and denormalization are not timed."""
     fn()                                   # warmup: cuDNN autotune / lazy init
     torch.cuda.synchronize()
     _t  = time.perf_counter()
@@ -447,7 +445,7 @@ print(f"      Mean ens std         : {_cf_std_s:.4f} mm/hr  (>0 = ensemble is di
 assert _cf_mm_s.shape == (K_ENS, H, W), f"CorrFlow shape mismatch: {_cf_mm_s.shape}"
 assert not np.isnan(_cf_std_s), "CorrFlow ensemble is all-NaN — checkpoint or denorm may be wrong"
 
-# ── 5. Output / truth values sanity ─────────────────────────────────────────
+# 5. Output and truth ranges
 print(f"\n[5] Truth for test timestep {_ts_sanity}")
 print(f"    Truth range  : [{np.nanmin(_truth_s):.3f}, {np.nanmax(_truth_s):.3f}] mm/hr")
 print(f"    Land pixels  : {int(np.sum(~np.isnan(_truth_s))):,}")
@@ -455,7 +453,7 @@ assert np.nanmax(_truth_s) > 0,   "Truth is all zeros — denorm may be wrong"
 assert np.nanmax(_truth_s) < 500, "Truth max > 500 mm/hr — denorm likely wrong"
 assert np.nanmin(_unet_mm_s) >= -1, "Negative predictions — denorm likely wrong"
 
-# ── 6. Timing estimate ────────────────────────────────────────────────────────
+# 6. Timing estimate
 print(f"\n[6] Timing estimate  (GPU forward only; excludes host transfer + I/O)")
 _per_ts = _unet_t + _cd_t + _cf_t
 print(f"    Time per timestep : {_per_ts:.3f} s  "
@@ -472,9 +470,7 @@ print("\n" + "=" * 65)
 print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
 print("=" * 65 + "\n")
 
-# =============================================================================
-# Table 6 — solver ablation. Reads META_DIR/extreme_meta.json; writes OUT_DIR CSV.
-# =============================================================================
+# Table 6 solver ablation: reads META_DIR/extreme_meta.json, writes a CSV to OUT_DIR
 
 meta_path = os.path.join(META_DIR, "extreme_meta.json")
 assert os.path.exists(meta_path), \
@@ -485,7 +481,7 @@ with open(meta_path) as fh:
 _yrs_zarr    = ds_zarr["time"].dt.year.values
 _times_zarr  = ds_zarr["time"].values
 extreme_idxs = {k: np.array(v) for k, v in _meta["extreme_idxs"].items()}
-test_idxs    = extreme_idxs["test"]        # FULL extreme test set by default
+test_idxs    = extreme_idxs["test"]        # full extreme test set by default
 if args.max_ts:
     rng       = np.random.default_rng(0)
     test_idxs = np.sort(rng.choice(
@@ -498,7 +494,7 @@ ab_rows = []
 WARMUP  = 3   # cuDNN autotune + allocator, so the first timestep isn't timed cold
 _z0 = ds_zarr["tp_coarse"].isel(time=int(test_idxs[0])).values
 
-# ── CorrDiff: Heun × {10, 25, 50, 100} ───────────────────────────────────────
+# CorrDiff: Heun with 10, 25, 50, 100 steps
 CD_STEPS = [10, 25, 50, 100]
 print(f"CorrDiff Heun ablation over {n_test} extreme test timesteps ...")
 print(f"{'Model':<12} {'Solver':<6} {'Steps':>5}  {'MAE':>8}  {'CRPS':>8}  {'Lat(s)':>8}")
@@ -546,7 +542,7 @@ for n_ab in CD_STEPS:
     print(f"{'CorrDiff':<12} {'heun':<6} {n_ab:>5}  "
           f"{mae_mean:>8.4f}  {crps_mean:>8.4f}  {latency:>8.2f}", flush=True)
 
-# ── CorrFlow: Euler × {1, 5, 10, 25} ─────────────────────────────────────────
+# CorrFlow: Euler with 1, 5, 10, 25 steps
 CF_STEPS = [1, 5, 10, 25]
 print(f"\nCorrFlow Euler ablation over {n_test} extreme test timesteps ...")
 

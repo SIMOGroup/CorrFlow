@@ -11,21 +11,17 @@ from .base import ChannelMetadata, DownscalingDataset
 
 
 class VietnamDataset(DownscalingDataset):
-    """
-    Full-grid Vietnam dataset for CorrDiff / CorrFlow.
+    """Full-grid Vietnam dataset for CorrDiff and CorrFlow.
 
-    Supports an optional `time_range` filter so the same zarr can be used
-    for both the training and validation split without duplicating data on disk.
-
-    Parameters
-    ----------
-    data_path          : str   – path to the consolidated zarr store
-    stats_path         : str   – path to stats.json (produced by preprocessing)
-    input_variables    : list  – variable names for the LR conditioning tensor
-    output_variables   : list  – variable names for the HR target tensor
-    invariant_variables: list  – (unused, kept for API parity)
-    time_range         : list  – optional [start_year, end_year] inclusive,
-                                 e.g. [2017, 2023] for train or [2024, 2024] for val
+    Args:
+        data_path: consolidated zarr store.
+        stats_path: stats.json from preprocessing.
+        input_variables: variables for the low-resolution conditioning.
+        output_variables: variables for the high-resolution target.
+        invariant_variables: unused; kept for API parity.
+        time_range: optional [start_year, end_year], inclusive, e.g. [2017, 2023]
+            for training or [2024, 2024] for validation, so one zarr store
+            serves both splits.
     """
 
     def __init__(
@@ -43,7 +39,7 @@ class VietnamDataset(DownscalingDataset):
             chunks=None,
         )
 
-        # ── Optional time-range filter ─────────────────────────────────────
+        # Optional time-range filter
         if time_range is not None:
             start_year, end_year = int(time_range[0]), int(time_range[1])
             years = self.ds["time"].dt.year.values
@@ -64,7 +60,7 @@ class VietnamDataset(DownscalingDataset):
             self.ds.sizes["longitude"],
         )
 
-        # ── Land mask ──────────────────────────────────────────────────────
+        # Land mask
         # Derived from the NaN pattern of the output variable (before any
         # fill).  Shape (1, H, W), float32: 1 = land, 0 = ocean.
         # Kept on CPU; move to GPU inside the loss functions.
@@ -106,7 +102,7 @@ class VietnamDataset(DownscalingDataset):
 
         return (y, x, torch.tensor(idx, dtype=torch.long))
 
-    # ── API ────────────────────────────────────────────────────────────────
+    # API
 
     def image_shape(self) -> Tuple[int, int]:
         return self.img_shape

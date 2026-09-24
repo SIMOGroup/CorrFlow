@@ -37,23 +37,14 @@ from helpers.train_helpers import (
 )
 
 
-###############################################################################
 # Early stopping
-###############################################################################
 
 class EarlyStopper:
-    """
-    Tracks validation loss and signals when training should stop.
+    """Stop training when validation loss stops improving.
 
-    Stops when validation loss has not improved by more than `min_delta`
-    for `patience` consecutive validation checks.  Also keeps track of the
-    best loss seen so far so the caller can decide when to save a
-    best-model checkpoint.
-
-    Parameters
-    ----------
-    patience  : int   – number of validation checks without improvement before stopping
-    min_delta : float – minimum absolute improvement that counts as "better"
+    Stops after `patience` consecutive validation checks without an
+    improvement larger than `min_delta`. The best loss is tracked so the
+    caller knows when to save a best-model checkpoint.
     """
 
     def __init__(self, patience: int = 10, min_delta: float = 0.0):
@@ -64,12 +55,7 @@ class EarlyStopper:
         self.improved   = False      # set True whenever best_loss is updated
 
     def update(self, val_loss: float) -> bool:
-        """
-        Feed the latest validation loss.
-
-        Returns True if training should stop, False otherwise.
-        Sets self.improved = True if this is a new best.
-        """
+        """Record a validation loss; return True if training should stop."""
         if val_loss < self.best_loss - self.min_delta:
             self.best_loss  = val_loss
             self.bad_checks = 0
@@ -81,20 +67,13 @@ class EarlyStopper:
         return self.bad_checks >= self.patience
 
 
-###############################################################################
 # Loss-curve helper
-###############################################################################
 
 def _save_loss_curve(train_history, val_history, out_path, title, logger):
-    """
-    Save a PNG showing training loss (every step) and validation loss (sparse).
-
-    Uses a log-scale y-axis so both the noisy per-step train loss and the
-    smoother val loss are readable on the same axes.
-    """
+    """Plot per-step training loss and validation loss on a log scale."""
     try:
         import matplotlib
-        matplotlib.use("Agg")           # non-interactive backend — safe on HPC
+        matplotlib.use("Agg")           # non-interactive backend for headless nodes
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(12, 5))
@@ -104,7 +83,7 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
             ax.plot(t_steps, t_losses, color="#4C72B0", alpha=0.35,
                     linewidth=0.8, label="train loss (per step)")
 
-            # Overlay a simple running mean so the trend is visible through noise
+            # Running mean so the trend shows through the noise
             window = max(1, len(t_losses) // 100)
             if window > 1:
                 import numpy as np
@@ -119,7 +98,7 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
             ax.plot(v_steps, v_losses, color="#DD8452", linewidth=2.0,
                     marker="o", markersize=4, label="val loss")
 
-            # Mark the best val point
+            # Mark the best validation point
             best_idx  = int(min(range(len(v_losses)), key=lambda i: v_losses[i]))
             ax.axvline(v_steps[best_idx], color="#DD8452", linestyle="--",
                        linewidth=0.8, alpha=0.6)
@@ -143,18 +122,14 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
         logger.warning(f"Could not save loss curve: {exc}")
 
 
-###############################################################################
 # Main
-###############################################################################
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-name", default="vietnam_config_training_diffusion")
     args = parser.parse_args()
 
-    ###########################################################################
-    # Distributed ENV
-    ###########################################################################
+    # Distributed env
 
     os.environ["MODULUS_DISTRIBUTED_INITIALIZATION_METHOD"] = "ENV"
     os.environ["RANK"]        = "0"
@@ -174,9 +149,7 @@ def main():
         }
     )
 
-    ###########################################################################
     # Load Hydra config
-    ###########################################################################
 
     from hydra import initialize_config_dir, compose
 
@@ -188,9 +161,7 @@ def main():
 
     print(OmegaConf.to_yaml(cfg))
 
-    ###########################################################################
     # Run directory
-    ###########################################################################
 
     job_name = cfg.run.name
     run_dir  = f"/mnt/data/khaiht/outputs/{job_name}_hope"
@@ -209,9 +180,7 @@ def main():
     print("Checkpoints  :", ckpt_dir)
     print("Best ckpt    :", best_ckpt_dir)
 
-    ###########################################################################
     # Logging
-    ###########################################################################
 
     log_file = Path(run_dir) / "train.log"
 
@@ -227,9 +196,7 @@ def main():
         ],
     )
 
-    ###########################################################################
     # Distributed init
-    ###########################################################################
 
     DistributedManager.initialize()
     dist = DistributedManager()
@@ -245,9 +212,7 @@ def main():
 
     OmegaConf.resolve(cfg)
 
-    ###########################################################################
     # Dataset config
-    ###########################################################################
 
     dataset_cfg = OmegaConf.to_container(cfg.dataset)
 
@@ -258,9 +223,7 @@ def main():
         train_test_split       = False
         validation_dataset_cfg = None
 
-    ###########################################################################
     # Training performance options
-    ###########################################################################
 
     fp_optimizations          = cfg.training.perf.fp_optimizations
     songunet_checkpoint_level = cfg.training.perf.songunet_checkpoint_level
@@ -277,9 +240,7 @@ def main():
     set_seed(dist.rank)
     configure_cuda_for_consistent_precision()
 
-    ###########################################################################
     # Dataset loading
-    ###########################################################################
 
     print("Checkpoint dir:", ckpt_dir)
 
@@ -308,9 +269,7 @@ def main():
         print(f"  Train samples : {len(dataset):,}")
         print(f"  Val samples   : {len(validation_dataset):,}")
 
-    ###########################################################################
     # Dataset channels
-    ###########################################################################
 
     prob_channels    = None
     dataset_channels = len(dataset.input_channels())
@@ -347,9 +306,7 @@ def main():
     print("img_in_channels :", img_in_channels)
     print("img_out_channels:", img_out_channels)
 
-    ###########################################################################
     # Model configuration
-    ###########################################################################
 
     model_args = {
         "img_out_channels": img_out_channels,
@@ -403,9 +360,7 @@ def main():
     if hasattr(cfg.model, "model_args"):
         model_args.update(OmegaConf.to_container(cfg.model.model_args))
 
-    ###########################################################################
     # Model creation
-    ###########################################################################
 
     if cfg.model.name == "regression":
         model = UNet(
@@ -444,9 +399,7 @@ def main():
             find_unused_parameters=dist.find_unused_parameters,
         )
 
-    ###########################################################################
     # Regression net (needed by diffusion/ResLoss)
-    ###########################################################################
 
     if hasattr(cfg.training.io, "regression_checkpoint_path"):
         regression_checkpoint_path = to_absolute_path(
@@ -456,9 +409,7 @@ def main():
         regression_net.eval().requires_grad_(False).to(dist.device)
         print("Loaded regression net:", regression_checkpoint_path)
 
-    ###########################################################################
     # Loss
-    ###########################################################################
 
     patch_num = getattr(cfg.training.hp, "patch_num", 1)
 
@@ -478,9 +429,7 @@ def main():
     elif cfg.model.name == "lt_aware_ce_regression":
         loss_fn = RegressionLossCE(prob_channels=prob_channels)
 
-    ###########################################################################
     # Optimizer
-    ###########################################################################
 
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -498,9 +447,7 @@ def main():
     )
     batch_size_per_gpu = cfg.training.hp.batch_size_per_gpu
 
-    ###########################################################################
     # Early stopping setup
-    ###########################################################################
 
     es_cfg = getattr(cfg.training.io, "early_stopping", None)
     if es_cfg is not None and validation_dataset_iterator is not None:
@@ -520,9 +467,7 @@ def main():
                 "early stopping disabled."
             )
 
-    ###########################################################################
     # Resume checkpoint
-    ###########################################################################
 
     try:
         cur_nimg = load_checkpoint(
@@ -536,9 +481,7 @@ def main():
         cur_nimg = 0
         logger0.info("No checkpoint found – starting fresh.")
 
-    ###########################################################################
     # Training loop
-    ###########################################################################
 
     logger0.info(f"Training for {cfg.training.hp.training_duration:,} images...")
 
@@ -555,9 +498,7 @@ def main():
         tick_start_nimg = cur_nimg
         tick_start_time = time.time()
 
-        #######################################################################
-        # Forward + backward
-        #######################################################################
+        # Forward and backward
 
         optimizer.zero_grad(set_to_none=True)
         loss_accum = 0.0
@@ -588,9 +529,7 @@ def main():
             loss_accum += loss.item() / num_accumulation_rounds
             loss.backward()
 
-        #######################################################################
         # Reduce loss across GPUs
-        #######################################################################
 
         loss_sum = torch.tensor([loss_accum], device=dist.device)
         if dist.world_size > 1:
@@ -608,9 +547,7 @@ def main():
             writer.add_scalar("train/loss_running_mean", average_loss_running_mean, cur_nimg)
             train_loss_history.append((cur_nimg, average_loss))
 
-        #######################################################################
-        # LR schedule (linear ramp-up → exponential decay)
-        #######################################################################
+        # LR schedule: linear warmup, then exponential decay
 
         lr_rampup = cfg.training.hp.lr_rampup
         for g in optimizer.param_groups:
@@ -630,9 +567,7 @@ def main():
         cur_nimg += cfg.training.hp.total_batch_size
         done = cur_nimg >= cfg.training.hp.training_duration
 
-        #######################################################################
-        # Progress print + running-mean reset
-        #######################################################################
+        # Progress logging and running-mean reset
 
         if is_time_for_periodic_task(
             cur_nimg, cfg.training.io.print_progress_freq, done,
@@ -661,9 +596,7 @@ def main():
             logger0.info("  ".join(fields))
             torch.cuda.reset_peak_memory_stats()
 
-        #######################################################################
         # Validation
-        #######################################################################
 
         avg_valid_loss = None
 
@@ -716,7 +649,7 @@ def main():
                 else f"  [val]  samples={cur_nimg:,}  val_loss={avg_valid_loss:.4f}"
             )
 
-            # ── Best-model checkpoint ────────────────────────────────────────
+            # Best-model checkpoint
             if early_stopper is not None:
                 stop_now = early_stopper.update(avg_valid_loss)
 
@@ -745,9 +678,7 @@ def main():
                     )
                     done = True  # break out of the while-loop cleanly
 
-        #######################################################################
         # Periodic checkpoint
-        #######################################################################
 
         if dist.world_size > 1:
             torch.distributed.barrier()
@@ -764,9 +695,7 @@ def main():
             )
             logger0.info(f"Checkpoint saved  cur_nimg={cur_nimg:,}")
 
-    ###########################################################################
     # Finalise
-    ###########################################################################
 
     if dist.rank == 0:
         writer.close()

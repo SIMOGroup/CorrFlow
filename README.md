@@ -92,19 +92,19 @@ rank histogram, spread-skill plot, per-hour boxplots, and case-study figures.
 ## Paths
 
 These scripts carry absolute paths from the machine the experiments ran on.
-Edit before running:
+Edit these variables before running:
 
-| File | Line | Variable |
-|---|---|---|
-| `preprocessing/download_era5.py` | 24 | `out_root` |
-| `preprocessing/viz_utils.py` | 106-108 | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_OUTPUT` |
-| `training/train.py` | 17, 196 | `MODULUS_ROOT`, `run_dir` |
-| `training/train_flow.py` | 17, 308 | `MODULUS_ROOT`, `run_dir` |
-| `evaluation/run_cache_extreme.py` | 16, 35 | `MODULUS_ROOT`, `OUT_DIR` |
-| `evaluation/run_fullperiod_sampled.py` | 18, 37 | `MODULUS_ROOT`, `OUT_DIR` |
-| `evaluation/run_ablation_matched.py` | 29, 62-63 | `MODULUS_ROOT`, `OUT_DIR`, `META_DIR` |
-| `evaluation/run_psd.py` | 16, 35 | `MODULUS_ROOT`, `OUT_DIR` |
-| `<modulus-root>/examples/generative/corrdiff/conf/dataset/vietnam.yaml` | 2-3 | `data_path`, `stats_path` |
+| File | Variables |
+|---|---|
+| `preprocessing/download_era5.py` | `out_root` |
+| `preprocessing/viz_utils.py` | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_OUTPUT` |
+| `training/train.py` | `MODULUS_ROOT`, `run_dir` |
+| `training/train_flow.py` | `MODULUS_ROOT`, `run_dir` |
+| `evaluation/run_cache_extreme.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/run_fullperiod_sampled.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/run_ablation_matched.py` | `MODULUS_ROOT`, `OUT_DIR`, `META_DIR` |
+| `evaluation/run_psd.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `<modulus-root>/examples/generative/corrdiff/conf/dataset/vietnam.yaml` | `data_path`, `stats_path` |
 
 `MODULUS_ROOT` must point at the Modulus v0.9.0 clone with `modulus_patch/`
 applied; the scripts find the CorrDiff datasets and Hydra configs there, so

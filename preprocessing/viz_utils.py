@@ -1,19 +1,9 @@
-"""
-viz_utils.py — shared data-loading and plotting utilities for the
-"7. Data Analysis & Visualizations" section of
-corrdiff_preprocess_tp_only_v1.ipynb.
+"""Data loading and plotting helpers for Section 7 of corrdiff_preprocess_tp_only_v1.ipynb.
 
-Design goal: every figure/animation cell in the notebook can be run on its
-own (fresh kernel, no other cell executed first). Each such cell just does
-
-    from viz_utils import *
-
-at the top and gets everything it needs — config, cached data loaders,
-map styling, colormap, and the peak-star toggle. Keep this file in the same
-folder as the notebook.
-
-Edit values in ONE place here (e.g. SHOW_PEAK_STAR, SEA_LABEL, RAIN_COLORS)
-and every figure in the notebook picks up the change on its next run.
+Each figure cell starts with `from viz_utils import *`, so it runs on a fresh
+kernel without the earlier cells. Shared settings (SHOW_PEAK_STAR, SEA_LABEL,
+RAIN_COLORS, ...) live here, so changing one updates every figure. Keep this
+file next to the notebook.
 """
 import warnings
 warnings.filterwarnings("ignore")
@@ -99,10 +89,8 @@ __all__ = [
     "find_extreme_events",
 ]
 
-# ══════════════════════════════════════════════════════════════════════════
-# Config (mirrors Section 1 of the notebook — kept here too so figure cells
-# never need Section 1 to have been run)
-# ══════════════════════════════════════════════════════════════════════════
+# Config, duplicated from Section 1 of the notebook so figure cells
+# don't depend on it
 RAW_INPUT_TP     = Path("/mnt/data/khaiht/data/vietnam/input_tp")
 RAW_OUTPUT_DIR   = Path("/mnt/data/khaiht/data/vietnam/output")
 PROCESSED_OUTPUT = Path("/mnt/data/khaiht/data/vietnamvip_processed/output")
@@ -119,19 +107,16 @@ FULL_EXTENT = (LON_MIN, LON_MAX, LAT_MIN, LAT_MAX)
 
 
 def crop(ds):
-    """Crop to the Vietnam bounding box. ERA5 is N→S so slice(MAX, MIN)."""
+    """Crop to the Vietnam bounding box. ERA5 latitudes run north to south, hence slice(MAX, MIN)."""
     return ds.sel(latitude=slice(LAT_MAX, LAT_MIN), longitude=slice(LON_MIN, LON_MAX))
 
 
-# ══════════════════════════════════════════════════════════════════════════
 # Peak-star toggle
-# ══════════════════════════════════════════════════════════════════════════
-# Set False to omit the peak-pixel star marker from every extreme-event map,
-# snapshot, animation frame, and the top-4 panel below.
+# Set False to hide the peak-pixel star on extreme-event maps, snapshots,
+# animation frames, and the top-4 panel.
 SHOW_PEAK_STAR = False
 
-# Global on/off for map gridlines and their tick labels. Individual map helpers
-# may override per call (add_gridlines(ax, show=...)).
+# Gridlines and tick labels on maps; add_gridlines(ax, show=...) overrides per call.
 SHOW_GRIDLINES = True
 
 
@@ -146,20 +131,9 @@ def plot_peak_star(ax, lon, lat, transform, color="lime", ms=16, zorder=10, **kw
     return line
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Rainfall colormap — ONE scale used across every intensity map in Section 7
-# (multi-year max, p99, extreme snapshots, animation, top-4 panel).
-#
-# Decision: previously "Max" maps used YlOrRd and "p99" maps used Blues even
-# though both encode the same physical quantity (mm/hr). That inconsistency
-# makes the two panels of a figure look like different variables. This
-# banded blue→green→yellow→red scale keeps "blue = light rain" (the
-# intuitive read you preferred) while still turning red at the extreme end,
-# which is the convention readers of an extreme-precipitation paper expect
-# for spotting danger. It's also the exact palette already used for the
-# main results figures in vietnam_results.ipynb, so figures across both
-# notebooks now look like they belong to the same paper.
-# ══════════════════════════════════════════════════════════════════════════
+# Rainfall colormap shared by every intensity map in Section 7 (multi-year max,
+# p99, extreme snapshots, animation, top-4 panel). Blue for light rain, red for
+# extremes; it matches the palette of the results figures in vietnam_results.ipynb.
 RAIN_BOUNDS = [0.1, 0.5, 1., 2., 5., 10., 20., 40., 80., 150.]
 RAIN_COLORS = ["#c8eeff", "#75c6f5", "#2196c4", "#65d47e",
                "#f5e642", "#f5a623", "#e84c2b", "#b01a1a", "#6b0f0f"]
@@ -169,10 +143,9 @@ RAIN_CMAP.set_over("#3d0000")
 RAIN_NORM = mcolors.BoundaryNorm(RAIN_BOUNDS, ncolors=RAIN_CMAP.N)
 
 
-# ── Precipitation colormap + colorscale toggle for the DATASET figures ──────────
-# Continuous matplotlib "Blues" (the original 99th-percentile map colour). The norm
-# is selected by PRECIP_SCALE, so flip it in ONE place and every map that calls
-# precip_norm() (or uses PRECIP_NORM) follows:
+# Precipitation colormap and colour scale for the dataset figures.
+# Continuous "Blues"; PRECIP_SCALE picks the norm used by precip_norm() and
+# PRECIP_NORM:
 #   "log"    - LogNorm(0.1, vmax): keeps wide-range maps (annual-max vs p99) readable
 #              on one shared scale. Default.
 #   "linear" - Normalize(0, vmax): the plain per-panel look for narrow-range figures.
@@ -201,9 +174,7 @@ def precip_norm(vmax=150.0, scale=None):
 PRECIP_NORM = precip_norm()   # default norm, follows PRECIP_SCALE
 
 
-# ══════════════════════════════════════════════════════════════════════════
 # Cartopy static features
-# ══════════════════════════════════════════════════════════════════════════
 LAND_10M = cfeature.NaturalEarthFeature(
     "physical", "land", "10m", facecolor="#f5f5f0", edgecolor="none", zorder=0)
 COAST_10M = cfeature.NaturalEarthFeature(
@@ -214,34 +185,23 @@ BORDERS_10M = cfeature.NaturalEarthFeature(
     edgecolor="#555555", linewidth=0.6, zorder=2)
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Hoàng Sa / Trường Sa markers + East Sea label
-# Positions/styling copied from vietnam_results.ipynb §8 "Map utilities".
-# ══════════════════════════════════════════════════════════════════════════
+# Hoàng Sa / Trường Sa markers and East Sea label, placed as in the map
+# utilities of vietnam_results.ipynb.
 _ISLES = [
     (16.50, 112.00, "Hoàng Sa", "(Paracel Is.)"),
     (9.90, 114.20, "Trường Sa", "(Spratly Is.)"),
 ]
 
-# See the "Sea naming" markdown note above §7.5 in the notebook for the
-# East Sea vs. South China Sea discussion. Flip this one string (and re-run)
-# if you decide differently — every map picks it up automatically.
+# See the "Sea naming" note above §7.5 in the notebook. Changing this string
+# updates every map.
 SEA_LABEL = "South China Sea"
 
 
 def add_vietnam_islands(ax, transform, fontsize=8, marker_size=5):
-    # Placement matches the tuned code in vietnam_results.ipynb: Hoang Sa is marked at
-    # its true position with the label nudged up-right.
-    #
-    # Truong Sa sits close to the domain's EASTERN edge (only ~3 deg of margin to
-    # LON_MAX). A left-growing label there (old behaviour) is fine in wide, single
-    # shared-colorbar figures (7.7), but overflows past the coastline in narrower
-    # multi-panel grids that carve more space out of each map axis, e.g. 7.5's 2x2
-    # grid with a colorbar squeezed into every individual panel. Anchoring the label
-    # with ha="right" makes it grow INTO the map instead of toward the edge, so it
-    # stays on-panel no matter how wide/narrow a given figure's axes render — fixing
-    # it here means every map in the notebook (snapshot, top-4, animation, extremes)
-    # inherits the same safe placement without needing matching panel widths.
+    # Hoang Sa is marked at its true position with the label offset up-right.
+    # Truong Sa is only ~3° from the eastern edge, so its label is right-aligned
+    # (ha="right") to grow into the map and stay on-panel in narrow multi-panel
+    # figures.
     _bbox = dict(facecolor="white", alpha=0.7, edgecolor="#aaaaaa",
                  linewidth=0.3, pad=1, boxstyle="round,pad=0.3")
     for lat, lon, vname, ename in _ISLES:
@@ -272,7 +232,7 @@ def add_east_sea_label(ax, transform, extent=FULL_EXTENT, fontsize=11):
 
 
 def add_map_labels(ax, transform, extent=FULL_EXTENT, fontsize=8, marker_size=5):
-    """Convenience: East Sea label + island markers together."""
+    """Add the East Sea label and the island markers."""
     add_east_sea_label(ax, transform, extent, fontsize=fontsize + 3.0)
     add_vietnam_islands(ax, transform, fontsize=fontsize, marker_size=marker_size)
 
@@ -290,7 +250,7 @@ def add_gridlines(ax, show=None, labels=True):
 
 
 def setup_map_ax(ax, proj, extent=FULL_EXTENT, gridlines=True):
-    """Borders/coastline + extent + optional gridlines + sea/island labels."""
+    """Draw borders and coastline, set the extent, and add gridlines and labels."""
     ax.add_feature(BORDERS_10M)
     ax.add_feature(COAST_10M)
     ax.set_extent(list(extent), crs=proj)
@@ -299,11 +259,8 @@ def setup_map_ax(ax, proj, extent=FULL_EXTENT, gridlines=True):
     add_map_labels(ax, transform=proj, extent=extent)
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Cached data loaders — safe to call from any cell, any order. Caching is
-# per-process (speeds up repeated cells in one kernel session) but every
-# cell still works correctly starting from a cold kernel.
-# ══════════════════════════════════════════════════════════════════════════
+# Data loaders, cached per process. Cells can call them in any order, and
+# each still works on a cold kernel.
 _land_mask_cache = {}
 
 
@@ -367,10 +324,7 @@ def load_coarse_tp_masked(years=ALL_YEARS):
     return _coarse_cache[key]
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Shared analysis routines (used by more than one figure cell, factored out
-# so those cells stay short instead of re-deriving the same table twice)
-# ══════════════════════════════════════════════════════════════════════════
+# Analysis routines shared by several figure cells
 def compute_annual_stats(years=ALL_YEARS):
     """Per-year mean/p99/p99.9/max/wet-fraction + peak location. Returns df_annual."""
     records = []

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""
-run_cache_extreme.py — extreme-subset .npz cache + case study timestamps.
-Writes: OUT_DIR/cache/{split}/*.npz, OUT_DIR/extreme_meta.json
+"""Cache model outputs on the heavy-rain subset and pick case-study timestamps.
+
+Writes OUT_DIR/cache/{split}/*.npz and OUT_DIR/extreme_meta.json.
 """
 import os, sys, time, warnings, json
 from pathlib import Path
@@ -247,16 +247,14 @@ def _run_and_cache(split, zi):
         _cache_path(split, zi),
         truth_mm=truth_mm, unet_mm=unet_mm, cd_mm=cd_mm, cf_mm=cf_mm)
 
-# =============================================================================
-# SANITY CHECKS — run before the main loop to verify everything is wired correctly
-# =============================================================================
+# Sanity checks before the main loop
 import time as _time
 
 print("\n" + "=" * 65)
 print("  SANITY CHECKS")
 print("=" * 65)
 
-# ── 1. Config summary ─────────────────────────────────────────────────────────
+# 1. Config summary
 print(f"\n[1] Config")
 print(f"    K_ENS          = {K_ENS}")
 print(f"    IMG_SHAPE      = {IMG_SHAPE}")
@@ -266,7 +264,7 @@ print(f"    M_OUT={M_OUT:.4f}  S_OUT={S_OUT:.4f}")
 print(f"    Q90={Q90_MM:.4f}  Q99={Q99_MM:.4f} mm/hr")
 print(f"    OUT_DIR = {OUT_DIR}")
 
-# ── 2. Checkpoint paths exist ────────────────────────────────────────────────
+# 2. Checkpoint paths exist
 print(f"\n[2] Checkpoint files")
 for label, path in [
     ("UNet  ", REG_CKPT),
@@ -278,7 +276,7 @@ for label, path in [
     if not ok:
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-# ── 3. Zarr sanity ────────────────────────────────────────────────────────────
+# 3. Zarr store
 print(f"\n[3] Zarr store")
 print(f"    Variables  : {list(ds_zarr.data_vars)}")
 print(f"    Total time : {ds_zarr.sizes['time']:,} timesteps")
@@ -290,7 +288,7 @@ for split_name, years in [("train", TRAIN_YEARS), ("val", VAL_YEARS), ("test", T
     n = int(np.isin(_yr_check, years).sum())
     print(f"    {split_name:<6}: {n:,} timesteps  ({years[0]}–{years[-1]})")
 
-# ── 4. One-timestep forward pass (index 0 of test split) ─────────────────────
+# 4. Forward pass on one test timestep
 print(f"\n[4] One-timestep forward pass")
 _yrs_check = ds_zarr["time"].dt.year.values
 _zi_sanity = int(np.where(np.isin(_yrs_check, TEST_YEARS))[0][0])
@@ -353,7 +351,7 @@ print(f"      Mean ens std         : {_cf_std_s:.4f} mm/hr  (>0 = ensemble is di
 assert _cf_mm_s.shape == (K_ENS, H, W), f"CorrFlow shape mismatch: {_cf_mm_s.shape}"
 assert not np.isnan(_cf_std_s), "CorrFlow ensemble is all-NaN — checkpoint or denorm may be wrong"
 
-# ── 5. Output / truth values sanity ─────────────────────────────────────────
+# 5. Output and truth ranges
 print(f"\n[5] Truth for test timestep {_ts_sanity}")
 print(f"    Truth range  : [{np.nanmin(_truth_s):.3f}, {np.nanmax(_truth_s):.3f}] mm/hr")
 print(f"    Land pixels  : {int(np.sum(~np.isnan(_truth_s))):,}")
@@ -361,7 +359,7 @@ assert np.nanmax(_truth_s) > 0,   "Truth is all zeros — denorm may be wrong"
 assert np.nanmax(_truth_s) < 500, "Truth max > 500 mm/hr — denorm likely wrong"
 assert np.nanmin(_unet_mm_s) >= -1, "Negative predictions — denorm likely wrong"
 
-# ── 6. Timing estimate ────────────────────────────────────────────────────────
+# 6. Timing estimate
 print(f"\n[6] Timing estimate")
 _per_ts = _unet_t + _cd_t + _cf_t
 print(f"    Time per timestep : {_per_ts:.2f} s  "
@@ -379,11 +377,9 @@ print("\n" + "=" * 65)
 print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
 print("=" * 65 + "\n")
 
-# =============================================================================
-# MAIN LOOP — extreme-subset cache + case studies
-# =============================================================================
+# Main loop: cache the heavy-rain subset and pick case studies
 
-# ── Extreme timestep selection ────────────────────────────────────────────────
+# Select extreme timesteps
 _yrs_zarr   = ds_zarr["time"].dt.year.values
 _times_zarr = ds_zarr["time"].values
 extreme_idxs = {}
@@ -401,7 +397,7 @@ for split_name, split_years in [
     extreme_idxs[split_name] = idxs_s[sel]
     print(f"  {split_name}: {len(sel):,} extreme / {len(idxs_s):,} total")
 
-# ── Case 4: auto-find strongest NE-monsoon hour ───────────────────────────────
+# Case 4: strongest NE-monsoon hour
 print("\nFinding Case 4 (NE monsoon, Oct-Nov, 14-16N, 107-109E) ...")
 _lat_sl = slice(np.searchsorted(lat1d_fine, 14.0),
                 np.searchsorted(lat1d_fine, 16.0) + 1)
@@ -439,7 +435,7 @@ CASE_META = {
     "case4": (CASE4_TS,              "train"),
 }
 
-# ── Run and cache ─────────────────────────────────────────────────────────────
+# Run and cache
 _times_pd = pd.to_datetime(_times_zarr)
 
 for run_split, run_idxs in [
@@ -473,7 +469,7 @@ for cname, (cts, split_cs) in CASE_META.items():
     else:
         print(f"{cname}: cached ({cts})")
 
-# ── Save metadata JSON for notebook to load ───────────────────────────────────
+# Save metadata for the notebook
 meta = {
     "Q90_MM":       Q90_MM,
     "Q99_MM":       Q99_MM,

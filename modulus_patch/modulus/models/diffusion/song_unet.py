@@ -521,14 +521,12 @@ class SongUNetPosEmbd(SongUNet):
     def forward(
         self, x, noise_labels, class_labels, global_index=None, augment_labels=None
     ):
-        # print("Before pos emb:", x.shape)
         
         # append positional embedding to input conditioning
         if self.pos_embd is not None:
             selected_pos_embd = self.positional_embedding_indexing(x, global_index)
             x = torch.cat((x, selected_pos_embd), dim=1)
 
-        # print("After pos emb:", x.shape)
         
         return super().forward(x, noise_labels, class_labels, augment_labels)
 

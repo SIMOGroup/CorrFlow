@@ -419,7 +419,7 @@ class RegressionLoss:
         loss = weight * ((D_yn - y) ** 2)
 
         if self.land_mask is not None:
-            # Broadcast (1, H, W) → (B, C, H, W) and zero ocean pixels
+            # Broadcast (1, H, W) to (B, C, H, W) and zero ocean pixels
             mask = self.land_mask.to(loss.device)
             loss = loss * mask
 

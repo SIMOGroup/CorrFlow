@@ -2,16 +2,12 @@ import cdsapi
 from pathlib import Path
 import traceback
 
-# =========================================================
 # ERA5 Downloader
 # Designed for SLURM batch execution
-# =========================================================
 
 client = cdsapi.Client()
 
-# =========================
 # Common settings
-# =========================
 years = list(range(2017, 2026))
 
 # [North, West, South, East]
@@ -24,9 +20,7 @@ times = [f"{h:02d}:00" for h in range(24)]
 out_root = Path("/mnt/data/khaiht/data/vietnam/input_tp")
 out_root.mkdir(parents=True, exist_ok=True)
 
-# =========================================================
 # Helper
-# =========================================================
 def should_download(path: Path, min_size_mb=50):
     """
     Skip if file exists and looks valid.
@@ -107,9 +101,7 @@ def download_pressure_level(var_long, short_name, level, year):
     print(f"✅ Finished: {out_file.name}")
 
 
-# =========================================================
 # Variables
-# =========================================================
 
 single_level_vars = {
     # "mean_sea_level_pressure": "msl",
@@ -131,14 +123,10 @@ pressure_level_vars = {
 }
 
 
-# =========================================================
 # Main
-# =========================================================
 def main():
 
-    # -------------------------
     # Single-level variables
-    # -------------------------
     for var_long, var_short in single_level_vars.items():
         for year in years:
             try:
@@ -149,10 +137,8 @@ def main():
                 print(str(e))
                 traceback.print_exc()
 
-    # -------------------------
     # Pressure-level variables
     # Uncomment if needed
-    # -------------------------
     """
     for var_long, info in pressure_level_vars.items():
         for year in years:
