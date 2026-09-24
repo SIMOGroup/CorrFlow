@@ -16,6 +16,20 @@ each ensemble member in a single Euler step.
     evaluation/      Scripts that run inference and cache results
     notebooks/       Renders every paper table and figure from those caches
 
+## Setup
+
+CorrFlow runs on a patched copy of NVIDIA Modulus v0.9.0. From the root of
+this repository:
+
+    git clone https://github.com/NVIDIA/physicsnemo.git ../modulus
+    git -C ../modulus checkout v0.9.0
+    cp -r modulus_patch/modulus/*  ../modulus/modulus/
+    cp -r modulus_patch/examples/* ../modulus/examples/
+    pip install -e ../modulus
+
+Then point `MODULUS_ROOT` in the training and evaluation scripts at that clone
+(see [Paths](#paths)). `modulus_patch/README.md` lists every patched file.
+
 ## Data
 
 | | Product | Resolution |
