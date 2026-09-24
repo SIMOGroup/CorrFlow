@@ -404,7 +404,7 @@ def main():
     C_t    = 1
     C_cond = img_in_channels
 
-    # Backbone args from the YAML, exactly as train.py applies them to the
+    # Backbone args from the YAML, exactly as train_corrdiff.py applies them to the
     # diffusion denoiser, so both correctors share one architecture.
     backbone_kwargs = {}
     if hasattr(cfg.model, "model_args"):

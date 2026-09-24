@@ -474,7 +474,7 @@ print("=" * 65 + "\n")
 
 meta_path = os.path.join(META_DIR, "extreme_meta.json")
 assert os.path.exists(meta_path), \
-    f"extreme_meta.json not found — run run_cache_extreme.py first.\n{meta_path}"
+    f"extreme_meta.json not found — run cache_extremes.py first.\n{meta_path}"
 
 with open(meta_path) as fh:
     _meta = json.load(fh)

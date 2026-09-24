@@ -11,7 +11,7 @@ each ensemble member in a single Euler step.
 ## Layout
 
     modulus_patch/   Changes to NVIDIA Modulus v0.9.0 (see modulus_patch/README.md)
-    preprocessing/   ERA5 download, log1p + regrid, zarr store, normalization stats
+    preprocessing/   ERA5/ERA5-Land download, de-accumulation, log1p + regrid, zarr store, stats
     training/        Regression, diffusion, and flow-matching training
     evaluation/      Scripts that run inference and cache results
     notebooks/       Renders every paper table and figure from those caches
@@ -53,38 +53,38 @@ Domain 5.9–25.0°N, 102.1–118.0°E (192 x 160 cells at 0.1°).
 Split: train 2017–2023, validation 2024, evaluation 2025.
 
 Both products come from the Copernicus Climate Data Store.
-`preprocessing/download_era5.py` expects a CDS API key in `~/.cdsapirc`.
+`preprocessing/download.py` downloads both and expects a CDS API key in `~/.cdsapirc`.
 
 ## Pipeline
 
-1. Download: `preprocessing/download_era5.py`
-2. Preprocess: `preprocessing/corrdiff_preprocess_tp_only_v1.ipynb`
-   applies log1p on each product's native grid, bilinearly regrids ERA5 to the
-   ERA5-Land grid, writes the zarr store, and computes normalization statistics
+1. Download: `python preprocessing/download.py`
+2. Preprocess: `preprocessing/preprocess.ipynb` de-accumulates ERA5-Land to hourly
+   totals, applies log1p on each product's native grid, bilinearly regrids ERA5 to
+   the ERA5-Land grid, writes the zarr store, and computes normalization statistics
    over training-period land pixels only.
 3. Train, regression first, then either corrector on its frozen residuals:
 
-       python training/train.py      --config-name=vietnam_config_training_regression
-       python training/train.py      --config-name=vietnam_config_training_diffusion
-       python training/train_flow.py --config-name=vietnam_config_training_corrflow
+       python training/train_corrdiff.py --config-name=vietnam_config_training_regression
+       python training/train_corrdiff.py --config-name=vietnam_config_training_diffusion
+       python training/train_corrflow.py --config-name=vietnam_config_training_corrflow
 
 4. Evaluate. The scripts compute and cache; the notebook renders. Run
-   `run_cache_extreme.py` first, since the ablation needs its
+   `cache_extremes.py` first, since the ablation needs its
    `extreme_meta.json`. All four write to `OUT_DIR`.
 
-       python evaluation/run_cache_extreme.py
-       python evaluation/run_fullperiod_sampled.py
-       python evaluation/run_ablation_matched.py
-       python evaluation/run_psd.py
+       python evaluation/cache_extremes.py
+       python evaluation/cache_sample.py
+       python evaluation/solver_ablation.py
+       python evaluation/power_spectra.py
 
-   Then run `notebooks/vietnam_results.ipynb` top to bottom.
+   Then run `notebooks/results.ipynb` top to bottom.
 
 | Script | Produces |
 |---|---|
-| `run_cache_extreme.py` | Heavy-rain subset selection, per-timestep caches, case timestamps |
-| `run_fullperiod_sampled.py` | Broad month-stratified sample scores |
-| `run_ablation_matched.py` | Solver sweep and latency (`tab6_ablation.csv`) |
-| `run_psd.py` | Radial power spectra (`psd_results.npz`) |
+| `cache_extremes.py` | Heavy-rain subset selection, per-timestep caches, case timestamps |
+| `cache_sample.py` | Broad month-stratified sample scores |
+| `solver_ablation.py` | Solver sweep and latency (`tab6_ablation.csv`) |
+| `power_spectra.py` | Radial power spectra (`psd_results.npz`) |
 
 The notebook reads these and produces the score tables, reliability diagrams,
 rank histogram, spread-skill plot, per-hour boxplots, and case-study figures.
@@ -96,19 +96,21 @@ Edit these variables before running:
 
 | File | Variables |
 |---|---|
-| `preprocessing/download_era5.py` | `out_root` |
+| `preprocessing/download.py` | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR` |
+| `preprocessing/preprocess.ipynb` | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_INPUT`, `PROCESSED_OUTPUT`, `ZARR_DIR` |
 | `preprocessing/viz_utils.py` | `RAW_INPUT_TP`, `RAW_OUTPUT_DIR`, `PROCESSED_OUTPUT` |
-| `training/train.py` | `MODULUS_ROOT`, `run_dir` |
-| `training/train_flow.py` | `MODULUS_ROOT`, `run_dir` |
-| `evaluation/run_cache_extreme.py` | `MODULUS_ROOT`, `OUT_DIR` |
-| `evaluation/run_fullperiod_sampled.py` | `MODULUS_ROOT`, `OUT_DIR` |
-| `evaluation/run_ablation_matched.py` | `MODULUS_ROOT`, `OUT_DIR`, `META_DIR` |
-| `evaluation/run_psd.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `training/train_corrdiff.py` | `MODULUS_ROOT`, `run_dir` |
+| `training/train_corrflow.py` | `MODULUS_ROOT`, `run_dir` |
+| `evaluation/cache_extremes.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/cache_sample.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `evaluation/solver_ablation.py` | `MODULUS_ROOT`, `OUT_DIR`, `META_DIR` |
+| `evaluation/power_spectra.py` | `MODULUS_ROOT`, `OUT_DIR` |
+| `notebooks/results.ipynb` | `MODULUS_ROOT`, `ZARR_PATH`, `STATS_PATH`, `RAW_TP_DIR`, `OUT_DIR`, `REG_CKPT`, `DIFF_CKPT`, `FLOW_CKPT` |
 | `<modulus-root>/examples/generative/corrdiff/conf/dataset/vietnam.yaml` | `data_path`, `stats_path` |
 
 `MODULUS_ROOT` must point at the Modulus v0.9.0 clone with `modulus_patch/`
-applied; the scripts find the CorrDiff datasets and Hydra configs there, so
-they can be run from any directory. `run_ablation_matched.py` also accepts
+applied; the scripts and `results.ipynb` find the CorrDiff datasets and Hydra configs there, so
+they can be run from any directory. `solver_ablation.py` also accepts
 `--out-dir`.
 
 ## License

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Azimuthally averaged power spectra for the power_spectra figure.
+"""Run inference on a month-stratified sample of each split and cache the ensembles.
 
-Uses a month-stratified sample of PSD_SAMPLE_N test timesteps from 2025.
-Writes OUT_DIR/psd_results.npz.
+Metrics are computed from these caches in notebooks/results.ipynb.
+Writes OUT_DIR/cache/{split}/*.npz and OUT_DIR/fullperiod_sample_idxs.json.
 """
 import os, sys, time, warnings, json
 from pathlib import Path
@@ -378,48 +378,16 @@ print("\n" + "=" * 65)
 print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
 print("=" * 65 + "\n")
 
-# Power spectra: mean PSD per model, saved with the frequency axis
+# Main loop: cache a month-stratified sample of each split. Table 1 is
+# computed from these caches in the notebook.
+#
+# Aggregate MAE/CRPS are means over timesteps, so ~1-2k sampled timesteps
+# per split match the full ~8.7k-hour year at about a fifth of the cost.
+# The caches share cache/{split}/ with the extreme set, so overlapping
+# timesteps are reused and metrics can be recomputed without inference.
 
-def _az_psd(field, dx_km=11.1):
-    # Fill ocean (NaN) with the field mean to avoid a sharp land-sea step,
-    # remove the DC component, then apply a 2D Hann window to suppress
-    # spectral leakage from the bounded, non-periodic domain.
-    fill  = float(np.nanmean(field))
-    f     = np.where(np.isnan(field), fill, field)
-    f     = f - float(f.mean())
-    win   = np.hanning(H)[:, None] * np.hanning(W)[None, :]
-    f     = f * win
-    F     = np.fft.fftshift(np.fft.fft2(f))
-    psd   = np.abs(F) ** 2 / float(np.sum(win ** 2))
-    fx    = np.fft.fftshift(np.fft.fftfreq(W, d=dx_km))
-    fy    = np.fft.fftshift(np.fft.fftfreq(H, d=dx_km))
-    FX, FY = np.meshgrid(fx, fy)
-    R       = np.sqrt(FX ** 2 + FY ** 2)
-    mf      = min(np.abs(fx).max(), np.abs(fy).max())
-    bins    = np.linspace(0, mf, min(H, W) // 2)
-    psd_r   = np.array([
-        psd[(R >= bins[i]) & (R < bins[i + 1])].mean()
-        if ((R >= bins[i]) & (R < bins[i + 1])).any() else 0.0
-        for i in range(len(bins) - 1)
-    ])
-    return 0.5 * (bins[:-1] + bins[1:]), psd_r
-
-
-_yrs_zarr     = ds_zarr["time"].dt.year.values
-_times_zarr   = ds_zarr["time"].values
-test_all_idxs = np.where(np.isin(_yrs_zarr, TEST_YEARS))[0]
-n_all         = len(test_all_idxs)
-LABELS        = ["ERA5-Land", "ERA5-Bilinear",
-                 "CorrDiff-UNet", "CorrDiff (Heun)", "CorrFlow (Euler)"]
-
-ENSEMBLE = ["CorrDiff (Heun)", "CorrFlow (Euler)"]
-psd_acc  = {k: [] for k in LABELS}        # per-timestep central spectrum
-freq_ref = None
-
-# Subsample test timesteps for speed, month-stratified like run_fullperiod_sampled.py
-# so every season is represented. Spectra averaged over a few thousand timesteps
-# match those over all ~8760. None = all.
-PSD_SAMPLE_N = 2000
+SAMPLE_PER_SPLIT = {"train": 1500, "val": 1000, "test": 2000}  # test = headline
+SEED             = 1234
 
 def _stratified_sample(idxs, months, n_target, rng):
     """Month-stratified sample without replacement, proportional allocation."""
@@ -433,67 +401,53 @@ def _stratified_sample(idxs, months, n_target, rng):
         quota = min(quota, len(pool))
         picked.extend(rng.choice(pool, size=quota, replace=False).tolist())
     picked = np.array(sorted(set(picked)))
-    if len(picked) > n_target:
+    if len(picked) > n_target:                      # trim any rounding overshoot
         picked = np.sort(rng.choice(picked, size=n_target, replace=False))
     return picked
 
-if PSD_SAMPLE_N is not None and PSD_SAMPLE_N < n_all:
-    _mon_test = ds_zarr["time"].dt.month.values[test_all_idxs]
-    loop_idxs = _stratified_sample(test_all_idxs, _mon_test, PSD_SAMPLE_N,
-                                   np.random.default_rng(1234))
-else:
-    loop_idxs = test_all_idxs
-print(f"PSD over {len(loop_idxs)} / {n_all} 2025 test timesteps "
-      f"(month-stratified, per-member spectra averaged) ...")
+rng       = np.random.default_rng(SEED)
+_yrs_all  = ds_zarr["time"].dt.year.values
+_mon_all  = ds_zarr["time"].dt.month.values
+sample_idxs = {}
 
-for ii, zi in enumerate(loop_idxs):
-    tp_coarse = ds_zarr["tp_coarse"].isel(time=int(zi)).values
-    tp_target = ds_zarr["tp"].isel(time=int(zi)).values
-    img_lr    = make_input_tensor(tp_coarse)
+print("\nSelecting month-stratified samples ...")
+for split_name, split_years in [("train", TRAIN_YEARS),
+                                 ("val",   VAL_YEARS),
+                                 ("test",  TEST_YEARS)]:
+    idxs_s = np.where(np.isin(_yrs_all, split_years))[0]
+    n_tgt  = SAMPLE_PER_SPLIT.get(split_name, 1500)
+    sel    = _stratified_sample(idxs_s, _mon_all[idxs_s], n_tgt, rng)
+    sample_idxs[split_name] = sel
+    print(f"  {split_name:<6}: {len(sel):,} / {len(idxs_s):,} timesteps")
 
-    truth_mm  = truth_to_mm(tp_target)
-    era5_fine = np.where(land_mask, np.expm1(tp_coarse), np.nan)
+# Cache ensembles for sampled timesteps (skip already-cached, e.g. extremes)
+for split_name in ("test", "val", "train"):
+    sel = sample_idxs[split_name]
+    n   = len(sel)
+    t0  = time.time()
+    print(f"\n{split_name}: caching {n:,} sampled timesteps")
+    for ii, zi in enumerate(sel):
+        zi = int(zi)
+        if os.path.exists(_cache_path(split_name, zi)):
+            continue
+        tp_t = ds_zarr["tp"].isel(time=zi).values
+        if not np.any(~np.isnan(tp_t)):             # all-ocean / all-NaN
+            continue
+        _run_and_cache(split_name, zi)
+        if (ii + 1) % 50 == 0:
+            rate = (time.time() - t0) / (ii + 1)
+            eta  = rate * (n - ii - 1) / 60
+            print(f"  {ii+1:5d}/{n}  {rate:.1f} s/ts  eta {eta:.0f} min", flush=True)
+    print(f"  done in {(time.time()-t0)/60:.1f} min.")
 
-    mu_z    = run_unet(img_lr)
-    unet_mm = pred_to_mm(mu_z.cpu().numpy()[:, 0, :, :])[0]
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        cd_z, _ = run_corrdiff(img_lr)
-        cd_members = pred_to_mm(cd_z.cpu().numpy()[:, 0, :, :])   # (K, H, W)
-        cf_z, _ = run_corrflow(img_lr)
-        cf_members = pred_to_mm(cf_z.cpu().numpy()[:, 0, :, :])   # (K, H, W)
-
-    # deterministic fields: one PSD each
-    for tag, fld in [("ERA5-Land",     truth_mm),
-                     ("ERA5-Bilinear", era5_fine),
-                     ("CorrDiff-UNet", unet_mm)]:
-        fr, pr = _az_psd(fld)
-        if freq_ref is None:
-            freq_ref = fr
-        psd_acc[tag].append(pr)
-
-    # ensemble fields: PSD of each member, then average the spectra
-    # (not the PSD of the ensemble mean, which would suppress fine-scale power)
-    for tag, members in [("CorrDiff (Heun)",  cd_members),
-                         ("CorrFlow (Euler)", cf_members)]:
-        specs = np.stack([_az_psd(members[m])[1]
-                          for m in range(members.shape[0])], axis=0)   # (K, n_bins)
-        psd_acc[tag].append(specs.mean(axis=0))    # central = mean over members
-
-    if (ii + 1) % 200 == 0:
-        print(f"  {ii+1}/{len(loop_idxs)}", flush=True)
-
-# Central spectra: average over timesteps
-psd_mean = {k: np.mean(np.stack(v, axis=0), axis=0) for k, v in psd_acc.items()}
-
-def _san(x):
-    return x.replace(" ", "_").replace("(", "").replace(")", "")
-
-out_path = os.path.join(OUT_DIR, "psd_results.npz")
-save_kw = {"freq": freq_ref, "n_timesteps": np.int64(len(loop_idxs))}
-for k, v in psd_mean.items():
-    save_kw[_san(k)] = v
-np.savez(out_path, **save_kw)
-print(f"\nSaved: {out_path}")
-print("Keys:", list(psd_mean.keys()))
+# Save sample index list for the notebook
+meta = {
+    "seed":             SEED,
+    "sample_per_split": SAMPLE_PER_SPLIT,
+    "sample_idxs":      {k: v.tolist() for k, v in sample_idxs.items()},
+}
+meta_path = os.path.join(OUT_DIR, "fullperiod_sample_idxs.json")
+with open(meta_path, "w") as fh:
+    json.dump(meta, fh, indent=2)
+print(f"\nSaved: {meta_path}")
+print("Table 1 is now computed in the notebook from cache/{split}/ over these idxs.")

@@ -1,4 +1,4 @@
-"""Data loading and plotting helpers for Section 7 of corrdiff_preprocess_tp_only_v1.ipynb.
+"""Data loading and plotting helpers for Section 7 of preprocess.ipynb.
 
 Each figure cell starts with `from viz_utils import *`, so it runs on a fresh
 kernel without the earlier cells. Shared settings (SHOW_PEAK_STAR, SEA_LABEL,
@@ -133,7 +133,7 @@ def plot_peak_star(ax, lon, lat, transform, color="lime", ms=16, zorder=10, **kw
 
 # Rainfall colormap shared by every intensity map in Section 7 (multi-year max,
 # p99, extreme snapshots, animation, top-4 panel). Blue for light rain, red for
-# extremes; it matches the palette of the results figures in vietnam_results.ipynb.
+# extremes; it matches the palette of the results figures in results.ipynb.
 RAIN_BOUNDS = [0.1, 0.5, 1., 2., 5., 10., 20., 40., 80., 150.]
 RAIN_COLORS = ["#c8eeff", "#75c6f5", "#2196c4", "#65d47e",
                "#f5e642", "#f5a623", "#e84c2b", "#b01a1a", "#6b0f0f"]
@@ -186,7 +186,7 @@ BORDERS_10M = cfeature.NaturalEarthFeature(
 
 
 # Hoàng Sa / Trường Sa markers and East Sea label, placed as in the map
-# utilities of vietnam_results.ipynb.
+# utilities of results.ipynb.
 _ISLES = [
     (16.50, 112.00, "Hoàng Sa", "(Paracel Is.)"),
     (9.90, 114.20, "Trường Sa", "(Spratly Is.)"),
