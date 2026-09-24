@@ -1,0 +1,28 @@
+# Tested with Python 3.10. Install PyTorch 2.1.2 first (see README: Setup);
+# the patched Modulus v0.9.0 is installed separately with its [launch] extra.
+
+# Core numerics and data
+numpy==1.24.4
+scipy==1.11.4
+pandas==2.3.3
+xarray==2025.6.1
+zarr==2.18.3
+dask==2024.6.2
+netCDF4==1.6.5
+cftime==1.6.5
+
+# Configs, training, and the CorrDiff dataset/helper modules
+hydra-core==1.3.2
+omegaconf==2.3.0
+einops==0.8.2
+numba==0.59.1
+opencv-python-headless==4.10.0.84
+psutil==6.0.0
+tensorboard==2.20.0
+nvtx==0.2.14
+
+# Data download, figures, and notebooks
+cdsapi==0.7.7
+matplotlib==3.10.8
+cartopy==0.25.0
+notebook==7.5.2

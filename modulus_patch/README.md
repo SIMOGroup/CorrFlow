@@ -58,6 +58,8 @@ Obtain Modulus v0.9.0, then overlay these files onto the clone:
 Paths mirror the upstream tree, so the copy lands each file in place.
 
 Then install the patched clone in editable mode, so `import modulus` picks up
-the changes:
+the changes. The `launch` extra is required by the CorrFlow scripts:
 
-    pip install -e <modulus-root>
+    pip install -e "<modulus-root>[launch]"
+
+See Setup in `../README.md` for the full install order.

@@ -18,14 +18,26 @@ each ensemble member in a single Euler step.
 
 ## Setup
 
-CorrFlow runs on a patched copy of NVIDIA Modulus v0.9.0. From the root of
-this repository:
+Tested with Python 3.10 and PyTorch 2.1.2 (CUDA 12.1). From the root of this
+repository:
 
-    git clone https://github.com/NVIDIA/physicsnemo.git ../modulus
-    git -C ../modulus checkout v0.9.0
-    cp -r modulus_patch/modulus/*  ../modulus/modulus/
-    cp -r modulus_patch/examples/* ../modulus/examples/
-    pip install -e ../modulus
+1. Install PyTorch for your CUDA version (see pytorch.org). For CUDA 12.1:
+
+       pip install torch==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+
+2. Install the remaining dependencies, pinned to the versions used for the paper:
+
+       pip install -r requirements.txt
+
+3. Get NVIDIA Modulus v0.9.0, apply the CorrFlow patch, and install it. The
+   `launch` extra is required: every training and evaluation script imports
+   `modulus.launch.logging`, which needs it.
+
+       git clone https://github.com/NVIDIA/physicsnemo.git ../modulus
+       git -C ../modulus checkout v0.9.0
+       cp -r modulus_patch/modulus/*  ../modulus/modulus/
+       cp -r modulus_patch/examples/* ../modulus/examples/
+       pip install -e "../modulus[launch]"
 
 Then point `MODULUS_ROOT` in the training and evaluation scripts at that clone
 (see [Paths](#paths)). `modulus_patch/README.md` lists every patched file.
