@@ -56,3 +56,8 @@ Obtain Modulus v0.9.0, then overlay these files onto the clone:
     cp -r modulus_patch/examples/* <modulus-root>/examples/
 
 Paths mirror the upstream tree, so the copy lands each file in place.
+
+Then install the patched clone in editable mode, so `import modulus` picks up
+the changes:
+
+    pip install -e <modulus-root>
