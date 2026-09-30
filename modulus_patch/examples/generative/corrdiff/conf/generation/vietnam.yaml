@@ -16,8 +16,8 @@ times_range: null
 times:
 
 io:
-  res_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_diffusion_hope/checkpoints_diffusion_best/EDMPrecondSR.0.10090240.mdlus
-    # Checkpoint filename for the diffusion model
+  res_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_diffusion_hope/checkpoints_diffusion_best/EDMPrecondSR.0.17310208.mdlus
+    # Checkpoint filename for the diffusion model (lowest validation loss)
     
   reg_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
     # Checkpoint filename for the mean predictor model
