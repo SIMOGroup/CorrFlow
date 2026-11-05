@@ -139,6 +139,16 @@ rank histogram, spread-skill plot, per-hour boxplots, and case-study figures.
 | `paper_figures.py` | Case maps and case tables (cells of `notebooks/results.ipynb`) |
 | `check_exceedance.py` | Tests of the derived scores against direct computations |
 
+## Trained models
+
+The checkpoints used in the paper are attached to the
+[v1.0 release](https://github.com/SIMOGroup/CorrFlow/releases/tag/v1.0): the U-Net (and its last
+checkpoint), CorrDiff, CorrFlow seeds 0–3 and CorrDet, about 500 MB in all. The release notes say which
+result each file belongs to. With them, the evaluation in steps 4 and 5 runs without training. Each file
+name is the original checkpoint name after a model prefix: place it, without the prefix, where
+`evaluation/revision/paths.py` expects it, or pass it with `--checkpoint`. `SHA256SUMS.txt` checks the
+downloads.
+
 ## Paths
 
 These scripts and configs use placeholder paths: `/path/to/data`, `/path/to/outputs` and
