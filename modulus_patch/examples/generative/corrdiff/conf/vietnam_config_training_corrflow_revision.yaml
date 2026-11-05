@@ -1,0 +1,51 @@
+# conf/vietnam_config_training_corrflow_revision.yaml
+# CorrFlow seeds 1-3 and CorrDet: the model settings of vietnam_config_training_corrflow.yaml, a
+# seed per run, a fixed budget of 25 M samples, and a fixed validation set checked every 1 M samples
+# to choose the checkpoint.
+# Per run, set on the command line:  training.seed=<n>  model.corrector=<flow|deterministic>
+#                                    run.out_dir=<run folder>
+run:
+  name: vietnam_flow
+  out_dir: null              # required; set on the command line
+
+hydra:
+  job:
+    chdir: true
+    name: ${run.name}
+  run:
+    dir: ./outputs/${run.name}
+
+defaults:
+  - dataset/vietnam
+  - model/vietnam_corrflow_model
+  - training/vietnam_corrflow_training
+
+validation:
+  type:       vietnam
+  data_path:  /path/to/data/vietnam_data.zarr
+  stats_path: /path/to/data/stats.json
+  time_range: [2024, 2024]
+  input_variables: ['tp_coarse']
+  output_variables:   ['tp']
+  invariant_variables: []
+
+model:
+  corrector: flow            # flow = CorrFlow; deterministic = CorrDet
+
+training:
+  seed: 0
+  hp:
+    training_duration: 25000000   # same budget for every run (seed 0's best checkpoint was at 20.6 M)
+    batch_size_per_gpu: 32        # fits a 40 GB GPU; total batch stays 256 (8 accumulation rounds)
+  io:
+    validation_freq: 1000000
+    save_checkpoint_freq: 1000000
+    fixed_validation:
+      enabled: true
+      t_points: 4                 # flow times t = 0.125, 0.375, 0.625, 0.875
+      noise_seed: 2024            # same noise at every check and in every run
+      hour_stride: 1              # every 2024 hour (smoke tests use a larger stride)
+      batch_size: 32
+    early_stopping:               # no early stopping: fixed budget; only tracks the best checkpoint
+      patience: 1000000
+      min_delta: 0.0

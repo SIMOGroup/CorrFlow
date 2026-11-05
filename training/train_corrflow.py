@@ -14,7 +14,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.tensorboard import SummaryWriter
 
 # Modulus v0.9.0 checkout with modulus_patch/ applied
-MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+MODULUS_ROOT  = os.environ.get("MODULUS_ROOT", "/path/to/modulus")
 CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
 if CORRDIFF_ROOT not in sys.path:
     sys.path.insert(0, CORRDIFF_ROOT)
@@ -34,6 +34,8 @@ from helpers.train_helpers import (
     handle_and_clip_gradients,
     is_time_for_periodic_task,
 )
+
+from fixed_validation import build_fixed_val_set, fixed_val_loss
 
 
 # Early stopping
@@ -123,6 +125,41 @@ class FlowUNet(torch.nn.Module):
             noise_labels=torch.zeros(B, device=x.device),
             class_labels=None,
         )
+
+
+class DetUNet(torch.nn.Module):
+    """Deterministic residual corrector: the same backbone as FlowUNet, without the noisy state
+    x_t and the time channel. Predicts the residual (target - regression mean) directly from the
+    conditioning (CorrDet in the paper)."""
+
+    def __init__(self, img_shape, in_channels, out_channels,
+                 n_grid_channels=N_GRID_CH, **backbone_kwargs):
+        super().__init__()
+        self.in_channels_logical = in_channels
+        self.out_channels        = out_channels
+        self.n_grid_channels     = n_grid_channels
+
+        self.net = SongUNetPosEmbd(
+            img_resolution=img_shape,
+            in_channels=in_channels + n_grid_channels,
+            out_channels=out_channels,
+            N_grid_channels=n_grid_channels,
+            embedding_type="zero",
+            **backbone_kwargs,
+        )
+
+    def forward(self, cond):
+        B = cond.shape[0]
+        return self.net(cond, noise_labels=torch.zeros(B, device=cond.device), class_labels=None)
+
+
+def deterministic_loss(model, residual, cond, land_mask=None):
+    """Land-masked squared error of the predicted residual (same averaging as the flow loss)."""
+    sq_err = (model(cond) - residual) ** 2
+    if land_mask is not None:
+        mask = land_mask.to(residual.device)
+        return (sq_err * mask).sum() / (mask.sum() * sq_err.shape[0] * sq_err.shape[1])
+    return sq_err.mean()
 
 
 # Flow-matching loss
@@ -219,7 +256,7 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
 
         fig.savefig(out_path, dpi=150)
         plt.close(fig)
-        logger.info(f"Loss curve saved → {out_path}")
+        logger.info(f"Loss curve saved to {out_path}")
 
     except Exception as exc:
         logger.warning(f"Could not save loss curve: {exc}")
@@ -230,6 +267,8 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-name", default="vietnam_config_training_corrflow")
+    parser.add_argument("overrides", nargs="*",
+                        help="Hydra overrides, e.g. training.seed=1 run.out_dir=$CORRFLOW_OUT/corrflow_seed1")
     args = parser.parse_args()
 
     # Distributed env
@@ -261,14 +300,26 @@ def main():
         version_base="1.2",
         config_dir=os.path.join(CORRDIFF_ROOT, "conf"),
     ):
-        cfg = compose(config_name=args.config_name)
+        cfg = compose(config_name=args.config_name, overrides=args.overrides)
 
     print(OmegaConf.to_yaml(cfg))
+
+    # Corrector type, seed and fixed validation set; the defaults reproduce the CorrFlow seed 0 run.
+    corrector = OmegaConf.select(cfg, "model.corrector", default="flow")       # flow | deterministic
+    seed      = int(OmegaConf.select(cfg, "training.seed", default=0))
+    fixed_val = OmegaConf.select(cfg, "training.io.fixed_validation", default=None)
+    if corrector not in ("flow", "deterministic"):
+        raise ValueError(f"model.corrector must be 'flow' or 'deterministic', got {corrector!r}")
 
     # Run directory
 
     job_name      = cfg.run.name
-    run_dir       = f"/mnt/data/khaiht/outputs/{job_name}_hope"
+    # A config that declares run.out_dir must set it, so that a new run never resumes another one.
+    if "out_dir" in cfg.run and not cfg.run.out_dir:
+        raise ValueError("run.out_dir is required with this config, e.g. "
+                         "run.out_dir=$CORRFLOW_OUT/corrflow_seed1")
+    out_dir = OmegaConf.select(cfg, "run.out_dir", default=None)
+    run_dir       = out_dir or os.path.join(os.environ.get("CORRFLOW_OUT", "/path/to/outputs"), job_name)
     tb_dir        = os.path.join(run_dir, "tensorboard")
     ckpt_dir      = os.path.join(run_dir, "checkpoints_flow")
     best_ckpt_dir = os.path.join(run_dir, "checkpoints_flow_best")
@@ -341,8 +392,10 @@ def main():
             cfg.training.hp.total_batch_size // dist.world_size
         )
 
-    set_seed(dist.rank)
+    # seed 0 gives set_seed(rank), as in the CorrFlow seed 0 run
+    set_seed(seed * 1000 + dist.rank)
     configure_cuda_for_consistent_precision()
+    logger0.info(f"Seed {seed}  corrector={corrector}")
 
     # Dataset loading
 
@@ -363,7 +416,7 @@ def main():
         dataset_cfg,
         data_loader_kwargs,
         batch_size=cfg.training.hp.batch_size_per_gpu,
-        seed=0,
+        seed=seed,
         validation_dataset_cfg=validation_dataset_cfg,
         train_test_split=train_test_split,
     )
@@ -414,20 +467,24 @@ def main():
               "gridtype", "N_grid_channels", "scale_cond_input"):
         backbone_kwargs.pop(k, None)          # not SongUNet constructor args
 
-    model = FlowUNet(
+    if corrector == "flow":
+        model_cls, logical_in = FlowUNet, C_x + C_t + C_cond
+    else:
+        model_cls, logical_in = DetUNet, C_cond
+    model = model_cls(
         img_shape=img_shape,
-        in_channels=C_x + C_t + C_cond,
+        in_channels=logical_in,
         out_channels=C_x,
         **backbone_kwargs,
     ).to(dist.device)
-    logger0.info(f"FlowUNet backbone kwargs: {backbone_kwargs}")
-    logger0.info(f"FlowUNet params: {sum(p.numel() for p in model.parameters())/1e6:.2f} M")
+    logger0.info(f"{model_cls.__name__} backbone kwargs: {backbone_kwargs}")
+    logger0.info(f"{model_cls.__name__} params: {sum(p.numel() for p in model.parameters())/1e6:.2f} M")
 
     model.train().requires_grad_(True)
 
     logger0.info(
-        f"FlowUNet  logical_in={C_x + C_t + C_cond}  "
-        f"actual_in={C_x + C_t + C_cond + N_GRID_CH}  "
+        f"{model_cls.__name__}  logical_in={logical_in}  "
+        f"actual_in={logical_in + N_GRID_CH}  "
         f"out={C_x}"
     )
 
@@ -484,6 +541,27 @@ def main():
                 "early_stopping is configured but no validation dataset found — "
                 "early stopping disabled."
             )
+
+    # Fixed validation set: built once, identical at every check
+
+    use_fixed_val = (fixed_val is not None and bool(fixed_val.get("enabled", False))
+                     and validation_dataset is not None)
+    if use_fixed_val:
+        fv_t_points = int(fixed_val.get("t_points", 4))
+        fv_seed     = int(fixed_val.get("noise_seed", 2024))
+        fv_batch    = int(fixed_val.get("batch_size", batch_size_per_gpu))
+        t0 = time.time()
+        val_set = build_fixed_val_set(
+            validation_dataset, regression_net, dist.device, cfg.model.hr_mean_conditioning,
+            amp_dtype, enable_amp, hour_stride=int(fixed_val.get("hour_stride", 1)),
+            batch_size=fv_batch,
+        )
+        logger0.info(
+            f"Fixed validation set: {len(val_set['hours']):,} hours"
+            + (f" x {fv_t_points} flow times" if corrector == "flow" else "")
+            + f", noise seed {fv_seed}, built in {time.time() - t0:.0f} s"
+        )
+    val_csv = Path(run_dir) / "val_history.csv"
 
     # Resume checkpoint
 
@@ -552,7 +630,10 @@ def main():
             cond = torch.cat([mu, img_lr], dim=1) if cfg.model.hr_mean_conditioning else img_lr
 
             with torch.autocast("cuda", dtype=amp_dtype, enabled=enable_amp):
-                loss = flow_matching_loss(model, residual, cond, land_mask=land_mask)
+                if corrector == "flow":
+                    loss = flow_matching_loss(model, residual, cond, land_mask=land_mask)
+                else:
+                    loss = deterministic_loss(model, residual, cond, land_mask=land_mask)
 
             loss = loss / num_accumulation_rounds
             loss.backward()
@@ -636,8 +717,15 @@ def main():
             model.eval()
             valid_loss_accum = 0.0
 
+            if use_fixed_val:
+                valid_loss_accum = fixed_val_loss(
+                    model.module if dist.world_size > 1 else model, val_set, corrector,
+                    land_mask, dist.device, amp_dtype, enable_amp,
+                    t_points=fv_t_points, noise_seed=fv_seed, batch_size=fv_batch,
+                )
+
             with torch.no_grad():
-                for _ in range(cfg.training.io.validation_steps):
+                for _ in range(0 if use_fixed_val else cfg.training.io.validation_steps):
                     img_clean_v, img_lr_v, *_ = next(validation_dataset_iterator)
                     img_clean_v = img_clean_v.to(dist.device).to(torch.float32).contiguous()
                     img_lr_v    = img_lr_v.to(dist.device).to(torch.float32).contiguous()
@@ -658,7 +746,10 @@ def main():
                               if cfg.model.hr_mean_conditioning else img_lr_v)
 
                     with torch.autocast("cuda", dtype=amp_dtype, enabled=enable_amp):
-                        loss_v = flow_matching_loss(model, residual_v, cond_v, land_mask=land_mask)
+                        if corrector == "flow":
+                            loss_v = flow_matching_loss(model, residual_v, cond_v, land_mask=land_mask)
+                        else:
+                            loss_v = deterministic_loss(model, residual_v, cond_v, land_mask=land_mask)
 
                     valid_loss_accum += loss_v.item() / cfg.training.io.validation_steps
 
@@ -675,6 +766,11 @@ def main():
             if dist.rank == 0:
                 writer.add_scalar("val/loss", avg_valid_loss, cur_nimg)
                 val_loss_history.append((cur_nimg, avg_valid_loss))
+                new_file = not val_csv.exists()
+                with open(val_csv, "a") as f:
+                    if new_file:
+                        f.write("step,val_loss,fixed\n")
+                    f.write(f"{cur_nimg},{avg_valid_loss:.6f},{int(use_fixed_val)}\n")
 
             logger0.info(
                 f"  [val]  samples={cur_nimg:,}  val_loss={avg_valid_loss:.4f}  "
@@ -698,8 +794,8 @@ def main():
                         epoch=cur_nimg,
                     )
                     logger0.info(
-                        f"  [val]  ✓ new best={early_stopper.best_loss:.4f}  "
-                        f"best checkpoint saved → {best_ckpt_dir}"
+                        f"  [val]  new best={early_stopper.best_loss:.4f}  "
+                        f"best checkpoint saved to {best_ckpt_dir}"
                     )
 
                 if stop_now:
