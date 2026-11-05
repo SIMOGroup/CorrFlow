@@ -39,7 +39,7 @@ perf:
     # notebook implementation. It is kept for config parity with CorrDiff.
 
 io:
-    regression_checkpoint_path: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
+    regression_checkpoint_path: /path/to/outputs/regression/checkpoints_regression_best/UNet.0.315136.mdlus
     # Path to the frozen stage-1 regression checkpoint.
     # This must be a valid Modulus checkpoint loadable via Module.from_checkpoint().
 

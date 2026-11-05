@@ -29,7 +29,7 @@ perf:
 
 # I/O
 io:
-    regression_checkpoint_path: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
+    regression_checkpoint_path: /path/to/outputs/regression/checkpoints_regression_best/UNet.0.315136.mdlus
     # Where to load the regression checkpoint
     print_progress_freq: 1000
     # MATCH regression

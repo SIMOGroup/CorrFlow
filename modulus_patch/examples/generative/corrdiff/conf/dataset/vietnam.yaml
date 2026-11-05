@@ -1,6 +1,6 @@
 type: vietnam
-data_path:  /mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr
-stats_path: /mnt/data/khaiht/data/vietnam_train_tp_only/stats.json
+data_path:  /path/to/data/vietnam_data.zarr
+stats_path: /path/to/data/stats.json
 
 # Training split: 2017–2023
 time_range: [2017, 2023]

@@ -11,8 +11,8 @@ from pathlib import Path
 
 import cdsapi
 
-RAW_INPUT_TP   = Path("/mnt/data/khaiht/data/vietnam/input_tp")
-RAW_OUTPUT_DIR = Path("/mnt/data/khaiht/data/vietnam/output")
+RAW_INPUT_TP   = Path("/path/to/data/era5")
+RAW_OUTPUT_DIR = Path("/path/to/data/era5_land")
 
 YEARS = list(range(2017, 2026))
 DAYS  = [f"{d:02d}" for d in range(1, 32)]

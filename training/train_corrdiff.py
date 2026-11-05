@@ -14,7 +14,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.tensorboard import SummaryWriter
 
 # Modulus v0.9.0 checkout with modulus_patch/ applied
-MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+MODULUS_ROOT  = os.environ.get("MODULUS_ROOT", "/path/to/modulus")
 CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
 if CORRDIFF_ROOT not in sys.path:
     sys.path.insert(0, CORRDIFF_ROOT)
@@ -116,7 +116,7 @@ def _save_loss_curve(train_history, val_history, out_path, title, logger):
 
         fig.savefig(out_path, dpi=150)
         plt.close(fig)
-        logger.info(f"Loss curve saved → {out_path}")
+        logger.info(f"Loss curve saved to {out_path}")
 
     except Exception as exc:
         logger.warning(f"Could not save loss curve: {exc}")
@@ -164,7 +164,7 @@ def main():
     # Run directory
 
     job_name = cfg.run.name
-    run_dir  = f"/mnt/data/khaiht/outputs/{job_name}_hope"
+    run_dir  = os.path.join(os.environ.get("CORRFLOW_OUT", "/path/to/outputs"), job_name)
     tb_dir   = os.path.join(run_dir, "tensorboard")
     ckpt_dir = os.path.join(run_dir, f"checkpoints_{cfg.model.name}")
     best_ckpt_dir = os.path.join(run_dir, f"checkpoints_{cfg.model.name}_best")
@@ -388,7 +388,7 @@ def main():
         )
 
     model.train().requires_grad_(True).to(dist.device)
-    print("Model created:", model.img_in_channels, "→", model.img_out_channels)
+    print("Model created:", model.img_in_channels, "->", model.img_out_channels)
 
     if dist.world_size > 1:
         model = DistributedDataParallel(
@@ -665,8 +665,8 @@ def main():
                         epoch=cur_nimg,
                     )
                     logger0.info(
-                        f"  [val]  ✓ new best={early_stopper.best_loss:.4f}  "
-                        f"best checkpoint saved → {best_ckpt_dir}"
+                        f"  [val]  new best={early_stopper.best_loss:.4f}  "
+                        f"best checkpoint saved to {best_ckpt_dir}"
                     )
 
                 if stop_now:

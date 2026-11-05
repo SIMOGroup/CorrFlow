@@ -16,8 +16,8 @@ defaults:
 # ── Validation dataset (2024) ─────────────────────────────────────────────────
 validation:
   type:       vietnam
-  data_path:  /mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr
-  stats_path: /mnt/data/khaiht/data/vietnam_train_tp_only/stats.json
+  data_path:  /path/to/data/vietnam_data.zarr
+  stats_path: /path/to/data/stats.json
   time_range: [2024, 2024]
   input_variables: ['tp_coarse']
   output_variables:   ['tp']
