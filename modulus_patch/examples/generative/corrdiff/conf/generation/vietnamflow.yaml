@@ -27,10 +27,10 @@ times_range: null
 times:
 
 io:
-  reg_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus
+  reg_ckpt_filename: /path/to/outputs/regression/checkpoints_regression_best/UNet.0.315136.mdlus
   # Frozen stage-1 regression checkpoint (same as CorrDiff training).
 
-  flow_ckpt_filename: /mnt/data/khaiht/outputs/vietnam_flow_hope/checkpoints_flow_best/FlowUNet.0.12225024.pt
+  flow_ckpt_filename: /path/to/outputs/corrflow_seed0/checkpoints_flow_best/FlowUNet.0.20620032.pt
   # CorrFlow stage-2 checkpoint saved by save_checkpoint() during training.
   # Format: plain torch.save(model, path) — NOT a Modulus .mdlus checkpoint.
   # Loaded in the notebook via: net_flow = torch.load(flow_ckpt_filename, map_location=device)

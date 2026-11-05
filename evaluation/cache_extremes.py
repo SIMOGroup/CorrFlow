@@ -13,7 +13,7 @@ import pandas as pd
 import torch
 
 # Modulus v0.9.0 checkout with modulus_patch/ applied
-MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+MODULUS_ROOT  = os.environ.get("MODULUS_ROOT", "/path/to/modulus")
 CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
 if CORRDIFF_ROOT not in sys.path:
     sys.path.insert(0, CORRDIFF_ROOT)
@@ -27,18 +27,23 @@ from modulus.utils.corrdiff import regression_step, diffusion_step
 from modulus.utils.generative import deterministic_sampler
 from helpers.generate_helpers import get_dataset_and_sampler
 
-ZARR_PATH  = "/mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr"
-STATS_PATH = "/mnt/data/khaiht/data/vietnam_train_tp_only/stats.json"
-REG_CKPT   = "/mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus"
-DIFF_CKPT  = "/mnt/data/khaiht/outputs/vietnam_diffusion_hope/checkpoints_diffusion_best/EDMPrecondSR.0.17310208.mdlus"
-FLOW_CKPT  = "/mnt/data/khaiht/outputs/vietnam_flow_hope/checkpoints_flow_best/FlowUNet.0.12225024.pt"
-OUT_DIR    = "/mnt/data/khaiht/outputs/vietnam_results_1step"
+ZARR_PATH  = "/path/to/data/vietnam_data.zarr"
+STATS_PATH = "/path/to/data/stats.json"
+REG_CKPT   = "/path/to/outputs/regression/checkpoints_regression_best/UNet.0.315136.mdlus"
+DIFF_CKPT  = "/path/to/outputs/corrdiff/checkpoints_diffusion_best/EDMPrecondSR.0.17310208.mdlus"
+FLOW_CKPT  = "/path/to/outputs/corrflow_seed0/checkpoints_flow_best/FlowUNet.0.20620032.pt"
+OUT_DIR    = "/path/to/outputs/results"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 TRAIN_YEARS = list(range(2017, 2024))
 VAL_YEARS   = [2024]
 TEST_YEARS  = [2025]
 K_ENS       = 16
+
+# CorrFlow backbone and conditioning: must equal model/vietnam_corrflow_model.yaml
+BACKBONE_KWARGS = dict(model_channels=64, channel_mult=[1, 2, 2],
+                       attn_resolutions=[16])
+HR_MEAN_CONDITIONING = True
 
 with open(STATS_PATH) as fh:
     _st = json.load(fh)
@@ -101,16 +106,19 @@ net_diff = (Module.from_checkpoint(DIFF_CKPT)
             .eval().to(device).to(memory_format=torch.channels_last))
 
 N_GRID_CH = 4
+# CorrFlow is conditioned on the regression mean and the coarse input
+C_FLOW_COND = C_COND + (C_OUT if HR_MEAN_CONDITIONING else 0)
 
 class FlowUNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.net = SongUNetPosEmbd(
             img_resolution=IMG_SHAPE,
-            in_channels=C_OUT + 1 + C_COND + N_GRID_CH,
+            in_channels=C_OUT + 1 + C_FLOW_COND + N_GRID_CH,
             out_channels=C_OUT,
             N_grid_channels=N_GRID_CH,
             embedding_type="zero",
+            **BACKBONE_KWARGS,
         )
     def forward(self, x, t, cond):
         B, _, Hh, Ww = x.shape
@@ -125,7 +133,7 @@ net_flow = FlowUNet().to(device)
 _ckpt = torch.load(FLOW_CKPT, map_location=device)
 if any(k.startswith("module.") for k in _ckpt):
     _ckpt = {k.replace("module.", "", 1): v for k, v in _ckpt.items()}
-net_flow.load_state_dict(_ckpt)
+net_flow.load_state_dict(_ckpt)          # strict: a mismatch here means a wrong architecture
 net_flow = net_flow.eval()
 del _ckpt
 print("All models loaded.")
@@ -168,28 +176,21 @@ def run_corrdiff(img_lr_t):
     return mu.expand(K_ENS, -1, -1, -1) + res, mu
 
 @torch.no_grad()
-def run_corrflow(img_lr_t, n_steps=1, solver="euler",
-                 return_intermediates=False, capture_at=None):
-    mu   = run_unet(img_lr_t)
-    cond = img_lr_t.expand(K_ENS, -1, -1, -1)
-    r    = torch.randn(K_ENS, C_OUT, *IMG_SHAPE, device=device)
-    dt   = 1.0 / n_steps
-    en_amp = device.type == "cuda"
-    inter = {}
-    if return_intermediates:
-        if capture_at is None:
-            capture_at = list(range(n_steps + 1))
-        if 0 in capture_at:
-            inter[0] = r.cpu().clone()
-    for i in range(n_steps):
-        t_cur = torch.full((K_ENS,), i / n_steps, device=device)
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=en_amp):
-            v0 = net_flow(r, t_cur, cond)
-        r = r + v0.float() * dt
-        if return_intermediates and (i + 1) in capture_at:
-            inter[i + 1] = r.cpu().clone()
-    pred = mu.expand(K_ENS, -1, -1, -1) + r
-    return (pred, mu, inter) if return_intermediates else (pred, mu)
+def run_corrflow(img_lr_t, seed=0):
+    """One Euler step from t=0; member k uses noise seed seed + k, as in solver_ablation.py."""
+    mu    = run_unet(img_lr_t)
+    cond1 = torch.cat([mu, img_lr_t], dim=1) if HR_MEAN_CONDITIONING else img_lr_t
+    cond  = cond1.expand(K_ENS, -1, -1, -1)
+    g = torch.Generator(device=device)
+    r = torch.empty(K_ENS, C_OUT, *IMG_SHAPE, device=device)
+    for k in range(K_ENS):
+        g.manual_seed(seed + k)
+        r[k] = torch.randn(C_OUT, *IMG_SHAPE, generator=g, device=device)
+    t0 = torch.zeros(K_ENS, device=device)
+    with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
+        v0 = net_flow(r, t0, cond)
+    r = r + v0.float()
+    return mu.expand(K_ENS, -1, -1, -1) + r, mu
 
 def _crps_ens(truth, ens):
     k = ens.shape[0]
@@ -250,9 +251,7 @@ def _run_and_cache(split, zi):
 # Sanity checks before the main loop
 import time as _time
 
-print("\n" + "=" * 65)
-print("  SANITY CHECKS")
-print("=" * 65)
+print("\nChecks before the main loop")
 
 # 1. Config summary
 print(f"\n[1] Config")
@@ -272,7 +271,7 @@ for label, path in [
     ("CorrFlow", FLOW_CKPT),
 ]:
     ok = os.path.exists(path)
-    print(f"    {'✅' if ok else '❌'} {label}: {os.path.basename(path)}")
+    print(f"    {'ok' if ok else 'missing'}  {label}: {os.path.basename(path)}")
     if not ok:
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
@@ -373,9 +372,7 @@ print(f"    Full-period test  : ~{_n_test  * _per_ts / 3600:.1f} h  ({_n_test:,}
 del _img_s, _mu_s, _cd_z_s, _cf_z_s, _tp_c_s, _tp_t_s
 del _unet_mm_s, _cd_mm_s, _cf_mm_s, _truth_s, _cd_mean_s, _cf_mean_s
 
-print("\n" + "=" * 65)
-print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
-print("=" * 65 + "\n")
+print("\nChecks passed.\n")
 
 # Main loop: cache the heavy-rain subset and pick case studies
 
@@ -481,4 +478,4 @@ meta_path = os.path.join(OUT_DIR, "extreme_meta.json")
 with open(meta_path, "w") as fh:
     json.dump(meta, fh, indent=2)
 print(f"\nSaved: {meta_path}")
-print("\n✅ All extreme inference done.")
+print("\nAll heavy-rain hours done.")

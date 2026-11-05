@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Table 6 solver ablation on the full extreme test set, using the
-matched-architecture CorrFlow.
+Solver sweep on the full heavy-rain (extreme) test set, with CorrFlow seed 0.
 
 Latency is GPU inference time only: torch.cuda.synchronize() brackets the
 model forward, so host transfer and the MAE/CRPS computation are excluded.
@@ -25,7 +24,7 @@ import pandas as pd
 import torch
 
 # Modulus v0.9.0 checkout with modulus_patch/ applied
-MODULUS_ROOT  = "/home/khaiht/oggy_climate/physicsnemo"
+MODULUS_ROOT  = os.environ.get("MODULUS_ROOT", "/path/to/modulus")
 CORRDIFF_ROOT = os.path.join(MODULUS_ROOT, "examples/generative/corrdiff")
 if CORRDIFF_ROOT not in sys.path:
     sys.path.insert(0, CORRDIFF_ROOT)
@@ -49,17 +48,17 @@ ap.add_argument("--flow-ckpt", default=None, help="override CorrFlow checkpoint"
 ap.add_argument("--out-dir",   default=None, help="override output directory")
 args = ap.parse_args()
 
-ZARR_PATH  = "/mnt/data/khaiht/data/vietnam_train_tp_only/vietnam_data.zarr"
-STATS_PATH = "/mnt/data/khaiht/data/vietnam_train_tp_only/stats.json"
-REG_CKPT   = "/mnt/data/khaiht/outputs/vietnam_regression_hope/checkpoints_regression_best/UNet.0.315136.mdlus"
+ZARR_PATH  = "/path/to/data/vietnam_data.zarr"
+STATS_PATH = "/path/to/data/stats.json"
+REG_CKPT   = "/path/to/outputs/regression/checkpoints_regression_best/UNet.0.315136.mdlus"
 DIFF_CKPT  = args.diff_ckpt or \
-    "/mnt/data/khaiht/outputs/vietnam_diffusion_hope/checkpoints_diffusion_best/EDMPrecondSR.0.17310208.mdlus"
+    "/path/to/outputs/corrdiff/checkpoints_diffusion_best/EDMPrecondSR.0.17310208.mdlus"
 FLOW_CKPT  = args.flow_ckpt or \
-    "/mnt/data/khaiht/outputs/vietnam_flow_legend/checkpoints_flow_best/FlowUNet.0.12225024.pt"
+    "/path/to/outputs/corrflow_seed0/checkpoints_flow_best/FlowUNet.0.20620032.pt"
 
 # OUT_DIR: where the CSV is written. META_DIR: source of extreme_meta.json.
-OUT_DIR    = args.out_dir or "/mnt/data/khaiht/outputs/vietnam_results_1step"
-META_DIR   = "/mnt/data/khaiht/outputs/vietnam_results_1step"
+OUT_DIR    = args.out_dir or "/path/to/outputs/results"
+META_DIR   = "/path/to/outputs/results"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Backbone args: must equal cfg.model.model_args used for both models.
@@ -181,7 +180,7 @@ print("-------------------------------------------------------------------")
 if abs(n_flow / n_diff - 1) > 0.05:
     raise RuntimeError(
         f"Backbones differ by >5% (ratio {n_flow/n_diff:.3f}x). The loaded "
-        f"FlowUNet is NOT the matched-arch net — check BACKBONE_KWARGS "
+        f"FlowUNet does not match the CorrDiff backbone; check BACKBONE_KWARGS "
         f"against cfg.model.model_args.")
 print("All models loaded.")
 
@@ -324,9 +323,7 @@ def _run_and_cache(split, zi):
 
 
 # Sanity checks before the main loop
-print("\n" + "=" * 65)
-print("  SANITY CHECKS")
-print("=" * 65)
+print("\nChecks before the main loop")
 
 # 1. Config summary
 print(f"\n[1] Config")
@@ -349,7 +346,7 @@ for label, path in [
     ("CorrFlow", FLOW_CKPT),
 ]:
     ok = os.path.exists(path)
-    print(f"    {'✅' if ok else '❌'} {label}: {os.path.basename(path)}")
+    print(f"    {'ok' if ok else 'missing'}  {label}: {os.path.basename(path)}")
     if not ok:
         raise FileNotFoundError(
             f"{label.strip()} checkpoint not found:\n  {path}\n"
@@ -396,7 +393,7 @@ assert not torch.isnan(_img_s).any(), "NaN in model input tensor"
 def _gpu_time(fn):
     """Time one call on the GPU after a single warmup iteration.
 
-    Same method as the ablation loop, so the result is comparable to Table 6.
+    Same method as the solver sweep below, so the results are comparable.
     Host transfer and denormalization are not timed."""
     fn()                                   # warmup: cuDNN autotune / lazy init
     torch.cuda.synchronize()
@@ -466,11 +463,9 @@ print(f"    Full-period test  : ~{_n_test  * _per_ts / 3600:.1f} h  ({_n_test:,}
 del _img_s, _mu_s, _cd_z_s, _cf_z_s, _tp_c_s, _tp_t_s
 del _unet_mm_s, _cd_mm_s, _cf_mm_s, _truth_s, _cd_mean_s, _cf_mean_s
 
-print("\n" + "=" * 65)
-print("  ALL SANITY CHECKS PASSED — proceeding to main loop")
-print("=" * 65 + "\n")
+print("\nChecks passed.\n")
 
-# Table 6 solver ablation: reads META_DIR/extreme_meta.json, writes a CSV to OUT_DIR
+# Solver sweep: reads META_DIR/extreme_meta.json, writes a CSV to OUT_DIR
 
 meta_path = os.path.join(META_DIR, "extreme_meta.json")
 assert os.path.exists(meta_path), \
@@ -595,7 +590,7 @@ _csv_name = "tab6_ablation_latency.csv" if args.latency_only else "tab6_ablation
 out_path  = os.path.join(OUT_DIR, _csv_name)
 df_ab.to_csv(out_path, index=False)
 print(f"\nSaved: {out_path}")
-print("\n=== Table 6 (matched-arch CorrFlow, full extreme test set) ===")
+print("\nSolver sweep, CorrFlow seed 0, full heavy-rain test set")
 print(df_ab[["model", "solver", "steps", "MAE", "CRPS", "Latency_s"]]
       .round(4).to_string(index=False))
 
