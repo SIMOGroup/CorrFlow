@@ -91,9 +91,9 @@ __all__ = [
 
 # Config, duplicated from Section 1 of the notebook so figure cells
 # don't depend on it
-RAW_INPUT_TP     = Path("/mnt/data/khaiht/data/vietnam/input_tp")
-RAW_OUTPUT_DIR   = Path("/mnt/data/khaiht/data/vietnam/output")
-PROCESSED_OUTPUT = Path("/mnt/data/khaiht/data/vietnamvip_processed/output")
+RAW_INPUT_TP     = Path("/path/to/data/era5")
+RAW_OUTPUT_DIR   = Path("/path/to/data/era5_land")
+PROCESSED_OUTPUT = Path("/path/to/data/processed/era5_land")
 
 LAT_MIN, LAT_MAX = 5.8, 25.0
 LON_MIN, LON_MAX = 102.0, 118.0
@@ -338,7 +338,7 @@ def compute_annual_stats(years=ALL_YEARS):
         p99 = float(tp.quantile(0.99))
         p999 = float(tp.quantile(0.999))
         max_val = float(tp.max())
-        wet_frac = float((tp > 0.1).mean())
+        wet_frac = float((tp > 0.1).sum() / tp.notnull().sum())   # land cells only (tp is NaN over the sea)
 
         flat_idx = tp.argmax(dim=["time", "latitude", "longitude"])
         t_max = str(tp.time.values[int(flat_idx["time"])])[:16]
