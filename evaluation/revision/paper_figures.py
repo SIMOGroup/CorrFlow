@@ -32,6 +32,8 @@ def main():
     ap.add_argument("--only", nargs="*", default=None, help="cases_styled: case names to draw (default: all)")
     ap.add_argument("--palette", nargs="+", default=["bupu"], choices=["bupu", "blues", "rain"],
                     help="cases_styled: rain palette(s); each is written as <name>_styled_<palette>")
+    ap.add_argument("--gshhg", default=None,
+                    help="cases_styled: GSHHS_f_L1.shp, land and coastlines from GSHHG instead of Natural Earth (gshhg.py)")
     args = ap.parse_args()
     cells = json.load(open(NOTEBOOK))["cells"]
     src = {i: "".join(cells[i]["source"]) for i in CELLS}
@@ -74,10 +76,10 @@ def main():
                 exec(s, g)
         if "cases_styled" in args.figures:
             for pal in args.palette:
-                cases_styled(g, args.out, args.only, pal)
+                cases_styled(g, args.out, args.only, pal, args.gshhg)
 
 
-def cases_styled(g, out, only=None, palette="bupu"):
+def cases_styled(g, out, only=None, palette="bupu", gshhg=None):
     """Case maps in the design language of the study-area figure (figure1_study_area.py): its extent, coastline, border
     and gridline styles, fonts and halo labels. Rain in a blue-purple sequential palette, not the yellow-green-blue of the
     study-area figure (that panel shows another quantity), with dry land and sea left plain; the same places in every
@@ -113,13 +115,22 @@ def cases_styled(g, out, only=None, palette="bupu"):
     cmap.set_over({"bupu": "#2a0a2e", "blues": "#041b3d", "rain": "#140a1f"}[palette])
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
     land = np.asarray(g["land_mask"], bool)
+    coast = None
+    if gshhg:                                                 # GSHHG has the small islands Natural Earth lacks
+        from gshhg import land as gshhg_land
+        coast = gshhg_land(gshhg, EXT)
+        print(f"GSHHG: {len(coast)} land polygons in the domain")
 
     def base(ax, left, bottom):
         ax.set_extent(EXT, crs=PC)
         ax.set_facecolor(SEA)
-        ax.add_feature(cfeature.NaturalEarthFeature("physical", "land", "10m"), facecolor=LAND, edgecolor="none", zorder=0.5)
-        ax.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"), facecolor="none",
-                       edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
+        if coast is None:
+            ax.add_feature(cfeature.NaturalEarthFeature("physical", "land", "10m"), facecolor=LAND, edgecolor="none", zorder=0.5)
+            ax.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"), facecolor="none",
+                           edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
+        else:
+            ax.add_geometries(coast, crs=PC, facecolor=LAND, edgecolor="none", zorder=0.5)
+            ax.add_geometries(coast, crs=PC, facecolor="none", edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
         ax.add_feature(cfeature.NaturalEarthFeature("cultural", "admin_0_boundary_lines_land", "10m"), facecolor="none",
                        edgecolor="#555555", linewidth=0.45, linestyle=(0, (3, 1.6)), zorder=4)
         for a in ax.get_children():                           # map features as images, as in the study-area figure
@@ -134,7 +145,7 @@ def cases_styled(g, out, only=None, palette="bupu"):
 
     def text(ax, lo, la, s, **kw):
         kw = {"fontsize": 5.8, "color": "#222222", "ha": "left", "va": "center", **kw}
-        ax.text(lo, la, s, transform=PC, zorder=12, path_effects=HALO, **kw)
+        return ax.text(lo, la, s, transform=PC, zorder=12, path_effects=HALO, **kw)
 
     def places(ax):                                           # every panel: cities and island names
         # names right of the dots, clear of the +-1.5 deg boxes of all three cases (Hanoi's starts east of the April box)
@@ -143,8 +154,9 @@ def cases_styled(g, out, only=None, palette="bupu"):
                                        (10.82, 106.63, "Ho Chi Minh City", (106.83, 10.87))]:
             ax.plot(lo, la, "o", ms=2.3, color="#1a1a1a", mec="white", mew=0.35, transform=PC, zorder=12)
             text(ax, tx, ty, name)
-        for la, s in [(16.9, "Hoang Sa\n(Paracel Is.)"), (12.1, "Truong Sa\n(Spratly Is.)")]:   # same x: aligned, clear of the boxes
-            text(ax, 114.3, la, s, fontsize=5.2, color="#555555", ha="center")
+        # same x: aligned, clear of the boxes; beside the islands, not over them (east of Hoang Sa, north of Truong Sa)
+        for la, s in [(16.9, "Hoang Sa\n(Paracel Is.)"), (12.5, "Truong Sa\n(Spratly Is.)")]:
+            island_labels.append(text(ax, 115.2, la, s, fontsize=5.2, color="#555555", ha="center"))
 
     for cname, (cts, split_cs, zoom_spec, peak_ll, fname) in g["CASE_META"].items():
         if only and cname not in only:
@@ -158,6 +170,7 @@ def cases_styled(g, out, only=None, palette="bupu"):
             cd_mean, cf_mean = np.nanmean(cd_ens, axis=0), np.nanmean(cf_ens, axis=0)
         bil = np.where(land, era5_bilinear_mm(g["ds_zarr"]["time"].values[zi]), np.nan)
         fig = plt.figure(figsize=(6.5, 5.75))
+        island_labels = []                                    # filled by places(); checked against GSHHG before saving
         gs = fig.add_gridspec(2, 3, left=0.06, right=0.995, top=0.955, bottom=0.135, wspace=0.05, hspace=0.12)
         panels = [("ERA5 input", lo2c, la2c, era5_c), ("ERA5-Land", None, None, truth), ("Bilinear", None, None, bil),
                   ("U-Net", None, None, unet), ("CorrDiff mean", None, None, cd_mean), ("CorrFlow mean", None, None, cf_mean)]
@@ -182,6 +195,9 @@ def cases_styled(g, out, only=None, palette="bupu"):
         cb.outline.set_linewidth(0.5)
         cb.set_label("Rainfall (mm hr$^{-1}$)", fontsize=6.8, labelpad=2)
         for ext in ("pdf", "png"):
+            if coast is not None and ext == "pdf":
+                from gshhg import covered
+                print(f"  {fname}: islands under the island labels (must be 0):", covered(fig, island_labels, coast))
             fig.savefig(os.path.join(out, f"{fname}_styled_{palette}.{ext}"), dpi=400)
         plt.close(fig)
         path = os.path.join(out, f"{fname}_styled_{palette}.pdf")

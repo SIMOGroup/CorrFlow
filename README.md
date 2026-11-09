@@ -1,7 +1,7 @@
 # One-step residual flow matching for probabilistic precipitation downscaling
 
 Code for the paper *One-step residual flow matching for probabilistic
-precipitation downscaling: accuracy, dispersion, and cost.*
+precipitation downscaling: accuracy, dispersion and cost.*
 
 CorrFlow keeps the two-stage residual decomposition of CorrDiff (a regression
 U-Net for the conditional mean, plus a generative corrector for the residual)
@@ -57,6 +57,11 @@ ERA5 and ERA5-Land come from the Copernicus Climate Data Store.
 `preprocessing/download_independent.py` downloads IMERG and GSMaP for 2024–2025 from Google Earth
 Engine; it needs `earthengine-api` and a Google Cloud project with Earth Engine access
 (`--project`, or the environment variable `EE_PROJECT`).
+
+The maps (study area and case studies) take their coastlines from GSHHG 2.3.7 at full resolution,
+level 1 (Wessel and Smith, 1996), available from NOAA NCEI; pass the shapefile `GSHHS_f_L1.shp` with
+`--gshhg` to `figure1_study_area.py` and `paper_figures.py`. Borders and rivers come from Natural
+Earth, which cartopy downloads.
 
 ## Pipeline
 
@@ -134,7 +139,7 @@ rank histogram, spread-skill plot, per-hour boxplots, and case-study figures.
 | `noise_sensitivity.py` | Noise cancellation and sensitivity of the trained networks near t = 0 |
 | `steps_sweep.py`, `timing.py` | Sampling steps and solvers; latency of every setting |
 | `year_consistency.py`, `which_side.py`, `ee_era5land_check.py`, `corrdiff_ckpt_check.py` | Checks of the ERA5 and ERA5-Land mismatch in 2024 and of the checkpoints |
-| `figure1_data.py`, `figure1_study_area.py` | Study-area figure |
+| `figure1_data.py`, `figure1_study_area.py`, `gshhg.py` | Study-area figure; GSHHG coastlines for the maps |
 | `revision_figures.py` | Calibration, trade-off and spectra figures; rows of the cost table |
 | `paper_figures.py` | Case maps and case tables (cells of `notebooks/results.ipynb`) |
 | `check_exceedance.py` | Tests of the derived scores against direct computations |

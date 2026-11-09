@@ -4,7 +4,10 @@ frequency over the training years (figure1_data.py). Only the model domain is ma
 
 Drawn at the printed size (6.5 in wide), so font sizes are the sizes in the paper.
 
-    python figure1_study_area.py --data $CORRFLOW_OUT/evaluation/figure1 --out <stem>
+    python figure1_study_area.py --data $CORRFLOW_OUT/evaluation/figure1 --out <stem> [--gshhg GSHHS_f_L1.shp]
+
+With --gshhg, coastlines come from GSHHG full resolution (gshhg.py), which has the small islands of Hoang Sa and
+Truong Sa that Natural Earth 1:10m lacks; borders and rivers stay Natural Earth. The paper's figure uses --gshhg.
 """
 import argparse
 import os
@@ -51,10 +54,13 @@ def relief(z):
     return np.where(land[..., None], ls.blend_soft_light(rgb, hs[..., None]), rgb), tints
 
 
-def base(ax, rivers=None):
+def base(ax, rivers=None, coast=None):
     ax.set_extent(EXT, crs=PC)
-    ax.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"),
-                   facecolor="none", edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
+    if coast is None:
+        ax.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"),
+                       facecolor="none", edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
+    else:
+        ax.add_geometries(coast, crs=PC, facecolor="none", edgecolor="#3d3d3d", linewidth=0.35, zorder=4)
     ax.add_feature(cfeature.NaturalEarthFeature("cultural", "admin_0_boundary_lines_land", "10m"),
                    facecolor="none", edgecolor="#555555", linewidth=0.45, linestyle=(0, (3, 1.6)),
                    zorder=4)
@@ -87,7 +93,10 @@ def cases(ax, size=8.5):
 
 def label(ax, lo, la, s, **kw):
     kw = {"fontsize": 6.5, "color": "#222222", "ha": "center", "va": "center", **kw}
-    ax.text(lo, la, s, transform=PC, zorder=10, path_effects=HALO, **kw)
+    return ax.text(lo, la, s, transform=PC, zorder=10, path_effects=HALO, **kw)
+
+
+ISLAND_LABELS = []                                        # checked against the coastline (gshhg.covered)
 
 
 def places(ax, da_nang):
@@ -100,15 +109,23 @@ def places(ax, da_nang):
                                     (10.82, 106.63, "Ho Chi Minh City", (106.83, 10.87, "left"))]:
         ax.plot(lo, la, "o", ms=2.6, color="#1a1a1a", mec="white", mew=0.4, transform=PC, zorder=11)
         label(ax, tx, ty, s, ha=ha)
-    for la, lo, s in [(15.95, 112.75, "Hoang Sa\n(Paracel Is.)"), (10.9, 115.2, "Truong Sa\n(Spratly Is.)")]:   # English forms, like the city names
-        label(ax, lo, la, s, fontsize=5.8, color="#555555")
+    # English forms, like the city names; beside the islands, not over them (southeast of Hoang Sa, clear of the inset
+    # legend; north of Truong Sa, whose northernmost islands lie near 11.5 N)
+    for la, lo, s in [(15.6, 113.6, "Hoang Sa\n(Paracel Is.)"), (12.25, 114.6, "Truong Sa\n(Spratly Is.)")]:
+        ISLAND_LABELS.append(label(ax, lo, la, s, fontsize=5.8, color="#555555"))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", required=True, help="output stem; .pdf and .png are written")
+    ap.add_argument("--gshhg", default=None, help="GSHHS_f_L1.shp: coastlines from GSHHG instead of Natural Earth")
     args = ap.parse_args()
+    coast = None
+    if args.gshhg:
+        from gshhg import land
+        coast = land(args.gshhg, EXT)
+        print(f"GSHHG: {len(coast)} land polygons in the domain")
     d = np.load(os.path.join(args.data, "etopo1_domain.npz"))
     r = np.load(os.path.join(args.data, "heavy_rain_2017_2023.npz"))
     rgb, tints = relief(d["elev"])
@@ -131,7 +148,7 @@ def main():
 
     # (a) relief, rivers, regions, cities, cases
     ax_a.imshow(rgb, extent=EXT, origin="upper", transform=PC, interpolation="bilinear", zorder=1)
-    base(ax_a, rivers)
+    base(ax_a, rivers, coast)
     ticks(ax_a)
     places(ax_a, da_nang=(108.3, 16.75, "center"))          # above the zoom box
     label(ax_a, 104.35, 22.55, "Red", style="italic", color="#2b6fa8", rotation=-38)
@@ -148,8 +165,11 @@ def main():
     ax_i = fig.add_axes(box(x_in, y_in, iw, ih), projection=PC)
     ax_i.imshow(rgb, extent=EXT, origin="upper", transform=PC, interpolation="nearest", zorder=1)
     ax_i.set_extent([ZOOM[0], ZOOM[1], ZOOM[2], ZOOM[3]], crs=PC)
-    ax_i.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"),
-                     facecolor="none", edgecolor="#3d3d3d", linewidth=0.5, zorder=4)
+    if coast is None:
+        ax_i.add_feature(cfeature.NaturalEarthFeature("physical", "coastline", "10m"),
+                         facecolor="none", edgecolor="#3d3d3d", linewidth=0.5, zorder=4)
+    else:
+        ax_i.add_geometries(coast, crs=PC, facecolor="none", edgecolor="#3d3d3d", linewidth=0.5, zorder=4)
     for a in ax_i.get_children():
         if isinstance(a, FeatureArtist):
             a.set_rasterized(True)
@@ -181,7 +201,7 @@ def main():
     norm = mcolors.BoundaryNorm(levels, cmap.N, extend="max")
     im = ax_b.pcolormesh(r["lon"], r["lat"], v, transform=PC, cmap=cmap, norm=norm, shading="nearest",
                          rasterized=True, zorder=1)
-    base(ax_b)
+    base(ax_b, coast=coast)
     ticks(ax_b, left=False)
     places(ax_b, da_nang=(108.42, 16.1, "left"))
     cases(ax_b)
@@ -203,6 +223,9 @@ def main():
         for s in c.spines.values():
             s.set_linewidth(0.5)
 
+    if coast is not None:
+        from gshhg import covered
+        print("islands under the island labels (must be 0):", covered(fig, ISLAND_LABELS, coast))
     fig.savefig(args.out + ".pdf", dpi=300)
     fig.savefig(args.out + ".png", dpi=300)
     print(f"{args.out}.pdf + .png; hours/year above tau99 over land: max {np.nanmax(v):.1f}, "
